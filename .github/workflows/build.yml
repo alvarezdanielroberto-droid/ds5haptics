@@ -1,0 +1,76 @@
+# Compila y prueba ds5haptics. Al publicar una versión (Release), adjunta el zip listo para usar.
+# Builds and tests ds5haptics. When a Release is published, attaches the ready-to-use zip.
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  tests:
+    name: Tests (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencias
+        run: sudo apt-get update && sudo apt-get install -y libopus0 cmake g++ python3
+      - name: Compilar los tests
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j
+      - name: Correr los tests
+        run: |
+          ./build/test_packet
+          ./build/test_live
+          ./build/test_profiles
+          ./build/test_pads_unit
+          if [ -x ./build/test_speaker ]; then ./build/test_speaker; fi
+          python3 tests/test_usbip_client.py ./build/usbip_harness
+          python3 tests/test_pads.py ./build/usbip_harness
+
+  windows:
+    name: Compilar (Windows x64)
+    runs-on: windows-latest
+    needs: tests
+    steps:
+      - uses: actions/checkout@v4
+      - name: Versión
+        id: ver
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "release") { $v = "${{ github.event.release.tag_name }}" }
+          else { $v = "dev-" + "${{ github.sha }}".Substring(0, 7) }
+          "version=$v" >> $env:GITHUB_OUTPUT
+      - name: Compilar
+        shell: pwsh
+        run: |
+          cmake -S . -B build -A x64 -DDS5_SPEAKER=ON "-DDS5_VERSION=${{ steps.ver.outputs.version }}"
+          cmake --build build --config Release
+      - name: Armar el zip
+        shell: pwsh
+        run: |
+          $name = "ds5haptics-${{ steps.ver.outputs.version }}-windows-x64"
+          $dir = "dist/ds5haptics"
+          New-Item -ItemType Directory -Force "$dir/scripts" | Out-Null
+          Copy-Item build/Release/ds5haptics.exe $dir
+          Copy-Item instalar.bat, desinstalar.bat, configurar-hidhide.bat, perfiles.bat, README.md, LICENSE, CREDITS.md $dir
+          Copy-Item scripts/instalar.ps1 "$dir/scripts"
+          Compress-Archive -Path $dir -DestinationPath "dist/$name.zip"
+          "ZIP=dist/$name.zip" >> $env:GITHUB_ENV
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ds5haptics-windows-x64
+          path: ${{ env.ZIP }}
+      - name: Adjuntar a la versión publicada
+        if: github.event_name == 'release'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" "${{ env.ZIP }}" --clobber
