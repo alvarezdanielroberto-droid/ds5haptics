@@ -1,0 +1,23 @@
+# Compilación / build output
+build/
+*.exe
+*.obj
+*.pdb
+*.ilk
+
+# Respaldo local: instaladores de terceros y código de libopus (se descargan solos)
+instaladores/
+deps/
+*.zip
+
+# Archivos personales que crea el programa
+ds5haptics.ini
+ds5haptics.log
+
+# Varios
+__pycache__/
+*.pyc
+.vs/
+.vscode/
+Thumbs.db
+desktop.ini
