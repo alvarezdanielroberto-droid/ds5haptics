@@ -9,6 +9,11 @@
 </p>
 
 <p align="center">
+  <a href="https://ko-fi.com/danielalvarez72293"><img alt="Support on Ko-fi" src="https://img.shields.io/badge/Ko--fi-support-ff5e5b?style=for-the-badge&logo=ko-fi&logoColor=white"></a>
+  <a href="https://cafecito.app/ds5haptics"><img alt="Invitame un café en Cafecito" src="https://img.shields.io/badge/Cafecito-invitame%20un%20caf%C3%A9-0ec2c2?style=for-the-badge"></a>
+</p>
+
+<p align="center">
   <b>English</b> · <a href="#espanol">Español</a>
 </p>
 
@@ -31,10 +36,12 @@ Windows and forwards everything the game sends to the real controller over Bluet
 | 🔊 **Controller speaker** | The controller speaker sound, compressed and sent over Bluetooth. |
 | 🕹️ **PS4 and Xbox modes** | For games without DualSense support: the controller shows up as a DualShock 4 or an Xbox 360 controller. Detected automatically. |
 | 📋 **Per-game profiles** | Speaker volume, haptics intensity and mode per game, applied automatically. |
-| 🔋 **Low battery warning** | At 15% or less, the mic button light pulses. |
+| 🔋 **Low battery warning** | At 15% or less, the mic button light pulses and the controller tells you. |
+| 🗣️ **Spoken notices** | The controller speaker says when ds5haptics is on, the mode it switched to and low battery, in your language. |
+| 🎧 **Your audio stays put** | If Windows picks the controller as your speakers or mic, ds5haptics switches back to the ones you had. |
 | 📊 **On-screen stats** | Tray icon and a translucent panel with **Alt+Insert**: battery, mode, haptics, triggers, speaker and latency. |
 | 🚀 **Starts with Windows** | Runs in the background and connects by itself when you turn the controller on. |
-| 🌐 **English and Spanish** | Follows the Windows language. |
+| 🌐 **English and Spanish** | Follows the Windows language. There's even an Argentine Spanish mode (`idioma = argento`). |
 
 ## Requirements
 
@@ -68,6 +75,8 @@ Windows and forwards everything the game sends to the real controller over Bluet
   Changes apply on save, no restart needed.
 - **Games without DualSense support** are detected automatically and switched to Xbox mode
   (the first time, the game may need a restart). When the game closes, PS5 mode comes back.
+  With `auto_mode = ps4` they switch to PS4 mode instead.
+- **Spoken notices:** turn them off with `voice = no`.
 - **Log:** `C:\ds5haptics\ds5haptics.log` shows what's going on.
 
 ## FAQ
@@ -77,7 +86,21 @@ Windows and forwards everything the game sends to the real controller over Bluet
 - **Anti-cheat:** some online games may not trust virtual controllers. Please report it in *Issues*.
 - **Firmware updates:** use Sony's app with a cable while ds5haptics is stopped (tray icon > *Exit*).
   Bluetooth haptics use an undocumented format that an update could change.
+- **Pairing with another PC:** the DualSense tries to reconnect to the last PC it used. To pair it
+  with a different one, hold **PS + Create** for about 3 seconds until the light blinks fast.
+- **Microphone:** the controller mic doesn't work over Bluetooth. In Discord and other apps, pick
+  your own mic.
+- **Several controllers:** for now ds5haptics uses one DualSense.
+- **No PC sound?** Windows may have picked the controller as the audio output. ds5haptics switches
+  it back by itself (`restore_audio = yes`); if not, choose your speakers in the sound settings.
+- **PlayStation button icons:** PS4 mode only shows them in games that support the DualShock 4
+  natively. Some games (like RDR2 on PC) don't, and need a mod for that.
 - **Uninstall:** run `C:\ds5haptics\desinstalar.bat`, then uninstall *USBip* and *HidHide*.
+
+## Support the project
+
+ds5haptics is free. If it saved you an adapter or a paid app, you can buy me a coffee:
+[Ko-fi](https://ko-fi.com/danielalvarez72293) · [Cafecito](https://cafecito.app/ds5haptics) (Argentina).
 
 ## For developers
 
@@ -125,10 +148,12 @@ y el parlante, en PC, solo funcionan por cable. ds5haptics crea en Windows un **
 | 🔊 **Parlante del mando** | El sonido del parlante del mando, comprimido y enviado por Bluetooth. |
 | 🕹️ **Modo PS4 y Xbox** | Para juegos sin soporte de DualSense: el mando se presenta como DualShock 4 o como mando de Xbox 360. Se detecta solo. |
 | 📋 **Perfiles por juego** | Volumen del parlante, intensidad de la háptica y modo, por juego. Se aplican solos. |
-| 🔋 **Aviso de batería baja** | Con 15% o menos, la luz del botón de micrófono parpadea. |
+| 🔋 **Aviso de batería baja** | Con 15% o menos, la luz del botón de micrófono parpadea y el mando te lo dice. |
+| 🗣️ **Avisos hablados** | El parlante del mando avisa cuando ds5haptics se activa, el modo al que cambió y la batería baja, en tu idioma. |
+| 🎧 **Tu audio no se mueve** | Si Windows elige al mando como parlantes o micrófono, ds5haptics vuelve a poner los que tenías. |
 | 📊 **Estadísticas en pantalla** | Ícono en la bandeja y un cuadro semitransparente con **Alt+Insert**: batería, modo, háptica, gatillos, parlante y latencia. |
 | 🚀 **Arranca con Windows** | Corre en segundo plano y se conecta solo cuando prendés el mando. |
-| 🌐 **Español e inglés** | Según el idioma de Windows. |
+| 🌐 **Español e inglés** | Según el idioma de Windows. Y en argento, con `idioma = argento`. |
 
 ## Qué hace falta
 
@@ -162,6 +187,8 @@ y el parlante, en PC, solo funcionan por cable. ds5haptics crea en Windows un **
   Los cambios se aplican al guardar, sin reiniciar nada.
 - **Juegos sin soporte de DualSense:** el programa lo detecta solo y pasa a modo Xbox
   (la primera vez puede hacer falta reiniciar el juego). Al cerrar el juego vuelve a modo PS5.
+  Con `modo_automatico = ps4` pasan a modo PS4.
+- **Avisos hablados:** se apagan con `voz = no`.
 - **Registro:** `C:\ds5haptics\ds5haptics.log` muestra todo lo que pasa: qué juego detectó,
   qué perfil aplicó, la batería y los errores.
 
@@ -199,11 +226,50 @@ cambia, puede dejar de andar hasta que se adapte el programa.
 </details>
 
 <details>
+<summary><b>¿Cómo lo emparejo con otra PC?</b></summary>
+
+El DualSense intenta volver a la última PC donde estuvo. Para emparejarlo con otra, mantené
+**PS + Create** unos 3 segundos hasta que la luz parpadee rápido, y ahí aparece en Bluetooth.
+</details>
+
+<details>
+<summary><b>¿Funciona el micrófono del mando?</b></summary>
+
+No: el micrófono del mando no funciona por Bluetooth. En Discord y otros programas elegí tu
+micrófono de siempre.
+</details>
+
+<details>
+<summary><b>¿Puedo usar dos mandos?</b></summary>
+
+Por ahora ds5haptics usa un solo DualSense.
+</details>
+
+<details>
+<summary><b>Dejé de escuchar el sonido de la PC</b></summary>
+
+Windows eligió al mando como salida de audio. ds5haptics lo vuelve a cambiar solo
+(`restaurar_audio = si`); si no, elegí tus parlantes en la configuración de sonido.
+</details>
+
+<details>
+<summary><b>¿El modo PS4 muestra los botones de PlayStation?</b></summary>
+
+Solo en los juegos que admiten el DualShock 4 de forma nativa. Algunos (como RDR2 en PC) no lo
+admiten y necesitan un mod para mostrar esos íconos.
+</details>
+
+<details>
 <summary><b>¿Cómo lo desinstalo?</b></summary>
 
 Ejecutá `C:\ds5haptics\desinstalar.bat`, y desinstalá *USBip* y *HidHide* desde
 *Configuración > Aplicaciones*.
 </details>
+
+## Apoyar el proyecto
+
+ds5haptics es gratis. Si te ahorró un adaptador o un programa pago, podés invitarme un café:
+[Cafecito](https://cafecito.app/ds5haptics) · [Ko-fi](https://ko-fi.com/danielalvarez72293).
 
 ## Para desarrolladores
 

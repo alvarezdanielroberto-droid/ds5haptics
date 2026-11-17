@@ -18,6 +18,14 @@ inline std::atomic<bool>& englishFlag() {
 inline void setEnglish(bool en) { englishFlag() = en; }
 inline bool isEnglish() { return englishFlag().load(std::memory_order_relaxed); }
 
+// "idioma = argento": español con modismos rioplatenses en algunos mensajes y en la voz.
+inline std::atomic<bool>& argentoFlag() {
+    static std::atomic<bool> ar{false};
+    return ar;
+}
+inline void setArgento(bool ar) { argentoFlag() = ar; }
+inline bool isArgento() { return !isEnglish() && argentoFlag().load(std::memory_order_relaxed); }
+
 // format_arg: el compilador revisa los %d/%s del texto en español en cada printf.
 // (Que el inglés tenga los mismos los verificó el script que generó las traducciones.)
 #if defined(__GNUC__) || defined(__clang__)
@@ -27,5 +35,9 @@ inline bool isEnglish() { return englishFlag().load(std::memory_order_relaxed); 
 #endif
 DS5_FORMAT_ARG(1) inline const char* tr(const char* es, const char* en) { return isEnglish() ? en : es; }
 inline const wchar_t* trw(const wchar_t* es, const wchar_t* en) { return isEnglish() ? en : es; }
+// Como tr, con una tercera versión para "idioma = argento"
+DS5_FORMAT_ARG(1) inline const char* tra(const char* es, const char* en, const char* ar) {
+    return isEnglish() ? en : isArgento() ? ar : es;
+}
 
 }  // namespace ds5

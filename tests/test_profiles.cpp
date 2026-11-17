@@ -96,6 +96,29 @@ int main() {
         CHECK(ds5::autoProfileBlock("X.exe").find("modo = xbox") != std::string::npos, "textos en español");
     }
 
+    // v1.0.1: voz, restaurar el audio, modo automático y argento
+    {
+        auto d = ds5::ProfileSet::parse(ds5::kDefaultIniEs);
+        CHECK(d.voice && d.restoreAudio && d.autoXbox && d.autoMode == ds5::kModeXbox, "valores nuevos por defecto (es)");
+        auto e = ds5::ProfileSet::parse(ds5::kDefaultIniEn);
+        CHECK(e.voice && e.restoreAudio && e.autoMode == ds5::kModeXbox, "valores nuevos por defecto (en)");
+        auto f = ds5::ProfileSet::parse("[general]\nvoz = no\nrestaurar_audio = no\nmodo_automatico = ps4\nidioma = argento\n");
+        CHECK(!f.voice && !f.restoreAudio && f.autoMode == ds5::kModePs4 && f.autoXbox && f.language == 2, "claves nuevas en español");
+        auto g = ds5::ProfileSet::parse("[general]\nvoice = no\nrestore_audio = yes\nauto_mode = no\n");
+        CHECK(!g.voice && g.restoreAudio && !g.autoXbox, "claves nuevas en inglés; auto_mode = no apaga el cambio automático");
+        CHECK(ds5::autoProfileBlock("X.exe", ds5::kModePs4).find("modo = ps4") != std::string::npos, "perfil automático en ps4");
+        // Un ini viejo + el bloque de actualización 4 conserva los perfiles y suma lo nuevo
+        auto h = ds5::ProfileSet::parse(std::string("[general]\nvoz = si\n[pbz]\nparlante = 7\n") + ds5::kIniUpgradeBlock4);
+        CHECK(h.voice && h.restoreAudio && h.resolve("PBZ.exe").speakerGain == 7.0f, "actualización 4");
+        ds5::setArgento(true);
+        CHECK(std::string(ds5::tra("a", "b", "c")) == "c", "tra argento");
+        ds5::setEnglish(true);
+        CHECK(std::string(ds5::tra("a", "b", "c")) == "b" && !ds5::isArgento(), "inglés gana sobre argento");
+        ds5::setEnglish(false);
+        ds5::setArgento(false);
+        CHECK(std::string(ds5::tra("a", "b", "c")) == "a", "tra español");
+    }
+
     // Limitador suave: lo bajo sube casi lineal, lo fuerte no pasa de 1
     CHECK(std::fabs(ds5::softGain(0.05f, 3) - 0.15f) < 0.002f, "bajo x3 = %.4f", ds5::softGain(0.05f, 3));
     CHECK(ds5::softGain(0.9f, 3) < 1.0f && ds5::softGain(0.9f, 3) > 0.99f, "fuerte limitado");

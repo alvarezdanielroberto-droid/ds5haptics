@@ -105,10 +105,14 @@ if (Find-HidHideCli) {
 Write-Host (T "[3/5] Copiando el programa a $dest..." "[3/5] Copying the program to $dest...")
 if (Test-Path "$dest\ds5haptics.exe") { & "$dest\ds5haptics.exe" stop | Out-Null; Start-Sleep -Seconds 3 }
 New-Item -ItemType Directory -Force $dest | Out-Null
-Copy-Item $exe -Destination $dest -Force
-foreach ($extra in 'README.md', 'LICENSE', 'CREDITS.md', 'desinstalar.bat', 'configurar-hidhide.bat', 'perfiles.bat') {
-    $p = Join-Path $root $extra
-    if (Test-Path $p) { Copy-Item $p -Destination $dest -Force }
+# Si el zip se descomprimió directo en C:\ds5haptics, los archivos ya están en su lugar
+$sameDir = (Resolve-Path $root).Path.TrimEnd('\') -ieq (Resolve-Path $dest).Path.TrimEnd('\')
+if (-not $sameDir) {
+    Copy-Item $exe -Destination $dest -Force
+    foreach ($extra in 'README.md', 'LICENSE', 'CREDITS.md', 'desinstalar.bat', 'configurar-hidhide.bat', 'perfiles.bat') {
+        $p = Join-Path $root $extra
+        if (Test-Path $p) { Copy-Item $p -Destination $dest -Force }
+    }
 }
 
 # 4) Configurar HidHide: autorizar el programa y ocultar el mando Bluetooth a los juegos

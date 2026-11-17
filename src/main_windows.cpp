@@ -59,8 +59,12 @@ extern "C" {
 #include "profiles.h"
 #include "tray_ui.h"
 #include "i18n.h"
+#include "audio_default.h"
+#include "voice_tts.h"
+#include "voice_queue.h"
 
 using ds5::tr;
+using ds5::tra;
 
 #ifndef DS5_VERSION
 #define DS5_VERSION "dev"   // GitHub Actions lo reemplaza por la versión publicada (ej. v1.0.0)
@@ -74,6 +78,9 @@ using ds5::tr;
 #include <mutex>
 #include <shared_mutex>
 #include <thread>
+#include <condition_variable>
+#include <chrono>
+#include <cwchar>
 
 #ifdef _MSC_VER
 #pragma comment(lib, "hid.lib")
@@ -401,6 +408,12 @@ static bool openDevice(const Options& opt, HidDevice& dev) {
             std::printf(tr("Hay un DualSense pero no por Bluetooth (¿está conectado por USB?). Desconectá el cable.\n", "A DualSense is connected, but not over Bluetooth (is it on USB?). Unplug the cable.\n"));
             return false;
         }
+    }
+    {
+        int bt = 0;
+        for (const auto& d : list) bt += d.bluetooth ? 1 : 0;
+        if (bt > 1)
+            std::printf(tr("AVISO: hay %d DualSense conectados por Bluetooth; ds5haptics por ahora usa uno solo.\n", "WARNING: %d DualSense controllers are connected over Bluetooth; ds5haptics currently uses only one.\n"), bt);
     }
     const auto& di = list[idx];
     std::printf(tr("Usando [%d] %s  VID %04X PID %04X  %s  (in %u / out %u / feat %u bytes)\n", "Using [%d] %s  VID %04X PID %04X  %s  (in %u / out %u / feat %u bytes)\n"),
@@ -894,11 +907,13 @@ static void ensureIni() {
         const bool need1 = !englishIni && low.find("bateria_baja") == std::string::npos;
         const bool need2 = !englishIni && low.find("xbox_automatico") == std::string::npos;
         const bool need3 = low.find("idioma") == std::string::npos && low.find("language") == std::string::npos;
-        if (!need1 && !need2 && !need3) return;
+        const bool need4 = low.find("restaurar_audio") == std::string::npos && low.find("restore_audio") == std::string::npos;
+        if (!need1 && !need2 && !need3 && !need4) return;
         if (FILE* a = _wfopen(p.c_str(), L"ab")) {
             if (need1) std::fputs(ds5::kIniUpgradeBlock, a);
             if (need2) std::fputs(ds5::kIniUpgradeBlock2, a);
             if (need3) std::fputs(ds5::kIniUpgradeBlock3, a);
+            if (need4) std::fputs(ds5::kIniUpgradeBlock4, a);
             std::fclose(a);
         }
         return;
@@ -1105,6 +1120,22 @@ static int cmdVirtual(const Options& opt) {
 
     WSADATA wsa;
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) { std::printf(tr("No se pudo iniciar Winsock.\n", "Could not start Winsock.\n")); return 1; }
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);   // para el audio de Windows (restaurar la salida)
+
+    // Opciones de [general] que se usan antes de cargar los perfiles (se actualizan al recargar)
+    std::atomic<bool> voiceOn{true}, restoreAudioOn{true};
+    {
+        ensureIni();
+        std::string text;
+        FILETIME t{};
+        if (readIni(text, t)) {
+            ds5::ProfileSet p0 = ds5::ProfileSet::parse(text);
+            voiceOn = p0.voice;
+            restoreAudioOn = p0.restoreAudio;
+        }
+    }
+    ds5::AudioDefaultGuard audioGuard;
+    audioGuard.snapshot();   // la salida y el micrófono de antes de que aparezca el mando
 
     if (opt.wait) {
         bool told = false;
@@ -1275,6 +1306,21 @@ static int cmdVirtual(const Options& opt) {
         std::printf("\n%s\n", m.c_str());
     };
 
+    // Avisos hablados: se piden desde cualquier hilo y los dice un hilo aparte
+    enum SayKind { kSayOn = 0, kSayMode = 1, kSayBattery = 2 };
+    std::mutex sayMu;
+    std::condition_variable sayCv;
+    std::deque<std::pair<int, int>> sayQueue;
+    auto say = [&](int kind, int arg) {
+        if (!voiceOn) return;
+        std::lock_guard<std::mutex> lk(sayMu);
+        // Si se acumulan (cambios de modo seguidos), quedarse con el último de cada tipo
+        for (auto it = sayQueue.begin(); it != sayQueue.end();)
+            it = it->first == kind ? sayQueue.erase(it) : it + 1;
+        sayQueue.emplace_back(kind, arg);
+        sayCv.notify_one();
+    };
+
     // Fase 3b: la háptica nativa llega como audio por los canales 3 y 4 del parlante.
     // Ya viene diseñada para los actuadores: sin AGC, sin compuerta y sin pasa-bajos.
     ds5::LiveConfig hcfg;
@@ -1287,6 +1333,7 @@ static int cmdVirtual(const Options& opt) {
     hcfg.latencyMs = opt.latencySet ? opt.latency : (opt.fast ? 11.0f : 20.0f);
     auto haptics = std::make_unique<ds5::LivePipeline>(hcfg);
     std::vector<float> hbuf;
+    ds5::VoiceQueue voiceQ;   // avisos hablados, se mezclan con el sonido del parlante
 #ifdef DS5_WITH_OPUS
     const bool speakerOn = opt.speaker;
     ds5::SpeakerFifo speakerFifo;
@@ -1401,6 +1448,7 @@ static int cmdVirtual(const Options& opt) {
                         std::lock_guard<std::mutex> lg(logMu);
                         std::printf(tr("[diag] HidHide: %s. Configuración del juego reenviada: %zu reportes.\n", "[diag] HidHide: %s. Game settings re-sent: %zu reports.\n"),
                                     hh.c_str(), replayed);
+                        say(kSayOn, 0);
                         diagLeft = 500;   // contar los tipos de reporte de entrada que llegan
                         diagFull = diagSimple = 0;
                     }
@@ -1457,9 +1505,11 @@ static int cmdVirtual(const Options& opt) {
                     ds5::buildMicLedReport(r, low ? 2 : 0);
                     forwardOutput(r, sizeof(r));
                     std::lock_guard<std::mutex> lg(logMu);
-                    std::printf(low ? tr("\nBatería baja (%d%%): la luz del micrófono queda parpadeando.\n", "\nLow battery (%d%%): the mic button light will keep pulsing.\n")
+                    std::printf(low ? tra("\nBatería baja (%d%%): la luz del micrófono queda parpadeando.\n", "\nLow battery (%d%%): the mic button light will keep pulsing.\n",
+                                          "\nChe, el joystick está en las últimas (%d%%): la luz del micrófono queda parpadeando. Enchufalo.\n")
                                     : tr("\nBatería: la luz del micrófono vuelve a la normalidad (%d%%).\n", "\nBattery: the mic button light is back to normal (%d%%).\n"), battShown.percent);
                     std::fflush(stdout);
+                    if (low) say(kSayBattery, battShown.percent);
                 }
             } else if (buf[0] == 0x01 && GetTickCount() - lastFix > 1000) {
                 lastFix = GetTickCount();   // volvió al modo simple: reactivar el completo
@@ -1486,7 +1536,9 @@ static int cmdVirtual(const Options& opt) {
         const long long period = clk.ticks(double(nbytes / 2) / ds5::kSampleRate);
         long long next = clk.now();
         long long lastReal = next - clk.ticks(10.0);
+        long long nextVoice = next;
         bool inGap = false;
+        (void)nextVoice;
 #ifdef DS5_WITH_OPUS
         ds5::SpeakerEncoder speakerEnc;
         ds5::AudioHapticsReport arep;
@@ -1499,6 +1551,7 @@ static int cmdVirtual(const Options& opt) {
 #ifdef DS5_WITH_OPUS
             if (encOk) {
                 speakerFifo.pop(spk.data());
+                voiceQ.mixInto(spk.data(), ds5::kSpeakerInFrames);
                 if (!speakerEnc.encode(spk.data(), opusPkt)) ++speakerErrors;
                 arep.build(chunk, opusPkt);
                 std::shared_lock<std::shared_mutex> lk(devMu);
@@ -1524,7 +1577,15 @@ static int cmdVirtual(const Options& opt) {
                 bool any = false;
                 while (haptics->pullExact(chunk, nbytes)) { send(chunk); any = true; }
                 long long now = clk.now();
-                if (any) { lastReal = now; inGap = false; }
+                if (any) { lastReal = now; inGap = false; nextVoice = now + period; }
+#ifdef DS5_WITH_OPUS
+                // Un aviso hablado sin audio del juego: mandar reportes al ritmo normal (háptica en cero)
+                else if (encOk && voiceQ.active() && now >= nextVoice) {
+                    std::memset(chunk, 0, sizeof(chunk));
+                    send(chunk);
+                    nextVoice = (now - nextVoice > 3 * period) ? now + period : nextVoice + period;
+                }
+#endif
                 bool streaming = vds.speakerStreaming() && now - lastReal < clk.ticks(1.0);
                 hapticActive = streaming;
                 // Hueco: el juego transmite pero no llegó audio a tiempo para el siguiente reporte
@@ -1535,13 +1596,87 @@ static int cmdVirtual(const Options& opt) {
             long long now = clk.now();
             if (real) lastReal = now;
             // Seguir mandando 1 s después del último audio (silencio), después callar
-            bool active = now - lastReal < clk.ticks(1.0);
+            bool active = now - lastReal < clk.ticks(1.0) || voiceQ.active();
             hapticActive = active && real;
             clk.sleepUntil(next);
             if (active) send(chunk);
             next += period;
             if (clk.now() - next > 3 * period) next = clk.now();
         }
+    });
+
+    // Hilo de los avisos hablados: genera la frase con la voz de Windows y la manda al parlante
+    auto phrase = [&](int kind, int arg, bool es) -> std::wstring {
+        const bool ar = es && ds5::isArgento();
+        if (kind == kSayOn)
+            return !es ? L"D S 5 haptics on." : ar ? L"De ese cinco h\u00e1ptics activado. A darle." : L"De ese cinco h\u00e1ptics activado.";
+        if (kind == kSayMode) {
+            if (arg == ds5::kModeXbox)
+                return !es ? L"Xbox mode." : ar ? L"Modo Xbox. El juego ni se va a dar cuenta." : L"Modo Xbox.";
+            if (arg == ds5::kModePs4) return !es ? L"P S 4 mode." : L"Modo pe ese cuatro.";
+            return !es ? L"P S 5 mode." : ar ? L"Modo pe ese cinco, con todo." : L"Modo pe ese cinco.";
+        }
+        wchar_t b[200];
+        if (!es) std::swprintf(b, 200, L"Low battery. %d percent left.", arg);
+        else if (ar) std::swprintf(b, 200, L"Che, te queda el %d por ciento de bater\u00eda. Enchufalo antes de que te deje a gamba.", arg);
+        else std::swprintf(b, 200, L"Bater\u00eda baja. Queda el %d por ciento.", arg);
+        return b;
+    };
+    // Volumen y salida del parlante del mando (si ningún juego los configuró, el aviso no sonaría)
+    auto routeSpeaker = [&] {
+        if (opt.noOutput) return;
+        uint8_t r[ds5::kUsbOutSize] = {};
+        r[0] = 0x02;
+        r[1] = 0x20 | 0x80;   // valid_flag0: volumen del parlante + control de audio
+        r[6] = 0x50;          // volumen del parlante
+        r[8] = 0x30;          // control de audio: salida por el parlante del mando
+        uint8_t bt[ds5::kMainReportSize];
+        if (!ds5::usbOutputToBt(r, sizeof(r), outSeq++, bt)) return;
+        std::shared_lock<std::shared_mutex> lk(devMu);
+        if (!btLost) dev.write(bt, sizeof(bt), opt.setOutputReport, 30);
+    };
+    (void)phrase;
+    (void)routeSpeaker;
+    std::thread voiceThread([&] {
+#ifdef DS5_WITH_OPUS
+        if (!speakerOn) return;
+        CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        bool ttsReady = false, ttsTried = false;
+        auto tts = std::make_unique<ds5::Speaker>();
+        while (!g_stop) {
+            std::pair<int, int> req;
+            {
+                std::unique_lock<std::mutex> lk(sayMu);
+                sayCv.wait_for(lk, std::chrono::milliseconds(300), [&] { return !sayQueue.empty() || g_stop.load(); });
+                if (g_stop) break;
+                if (sayQueue.empty()) continue;
+                req = sayQueue.front();
+                sayQueue.pop_front();
+            }
+            if (!voiceOn) continue;
+            if (!ttsTried) {   // se prepara recién al primer aviso
+                ttsTried = true;
+                ttsReady = tts->init(!ds5::isEnglish());
+                std::lock_guard<std::mutex> lg(logMu);
+                if (!ttsReady) std::printf(tr("\nAVISO: no se pudo iniciar la voz de Windows; sin avisos hablados.\n", "\nWARNING: could not start the Windows voice; no spoken notices.\n"));
+                else if (!ds5::isEnglish() && !tts->spanish())
+                    std::printf(tr("\nNo hay voz de Windows en español instalada: los avisos se dicen en inglés.\n", "\nNo Spanish Windows voice installed: notices are spoken in English.\n"));
+            }
+            if (!ttsReady) continue;
+            std::vector<float> pcm;
+            if (!tts->synthesize(phrase(req.first, req.second, tts->spanish()), pcm)) continue;
+            routeSpeaker();
+            voiceQ.push(pcm, 0.9f);
+            for (int i = 0; i < 300 && voiceQ.active() && !g_stop; ++i) Sleep(50);
+            Sleep(200);
+            // Devolver al parlante el volumen y la salida que había puesto el juego (si puso)
+            bool hadGame;
+            { std::lock_guard<std::mutex> lk(histMu); hadGame = !outByKind.empty(); }
+            if (hadGame) replayGameState();
+        }
+        tts.reset();
+        CoUninitialize();
+#endif
     });
 
     if (speakerOn)
@@ -1611,6 +1746,7 @@ static int cmdVirtual(const Options& opt) {
         if (!server.imported()) attachVirtual(5);
         if (m == ds5::kModePs5) dsPresentSince = GetTickCount();
         modeLight();
+        say(kSayMode, m);
     };
 
     // Modo inicial: el de la línea de comandos o el de [general] en ds5haptics.ini
@@ -1628,16 +1764,25 @@ static int cmdVirtual(const Options& opt) {
         std::printf(tr("Modo del mando virtual: %s.\n", "Virtual controller mode: %s.\n"), describeMode(padMode));
     }
     attachVirtual(opt.wait ? 10 : 1);
+    say(kSayOn, 0);
     if (padMode != ds5::kModePs5)
         std::printf(tr("Mientras esto esté abierto, Windows ve el mando de compatibilidad elegido.\n"
                     "Ctrl+C para cortar.\n", "While this is open, Windows sees the selected compatibility controller.\nCtrl+C to stop.\n"));
     else
-    std::printf(tr("Mientras esto esté abierto, Windows ve un DualSense por cable, con parlante y micrófono.\n"
+    std::printf(tr("Mientras esto esté abierto, Windows ve un DualSense por cable, con parlante.\n"
+                "El micrófono del mando NO funciona por Bluetooth: en Discord y otros programas elegí tu micrófono.\n"
                 "La háptica nativa del juego (canales 3 y 4 del parlante) se manda al mando por Bluetooth.\n"
-                "Si dejás de escuchar el sonido de la PC, Windows eligió el mando como salida de audio:\n"
-                "volvé a elegir tus parlantes o auriculares en la configuración de sonido.\n"
+                "Si Windows elige al mando como salida de audio o micrófono, ds5haptics vuelve a poner el que\n"
+                "tenías (restaurar_audio en ds5haptics.ini).\n"
                 "Ctrl+C para cortar.\n"
-                "Ocultá el mando Bluetooth real con HidHide para que los juegos no vean dos mandos.\n\n", "While this is open, Windows sees a wired DualSense, with speaker and microphone.\nThe game's native haptics (speaker channels 3 and 4) are sent to the controller over Bluetooth.\nIf you stop hearing your PC, Windows picked the controller as the audio output:\nselect your speakers or headphones again in the sound settings.\nCtrl+C to stop.\nHide the real Bluetooth controller with HidHide so games don't see two controllers.\n\n"));
+                "Ocultá el mando Bluetooth real con HidHide para que los juegos no vean dos mandos.\n\n",
+                "While this is open, Windows sees a wired DualSense, with speaker.\n"
+                "The controller mic does NOT work over Bluetooth: pick your own mic in Discord and other apps.\n"
+                "The game's native haptics (speaker channels 3 and 4) are sent to the controller over Bluetooth.\n"
+                "If Windows picks the controller as the audio output or mic, ds5haptics switches back to the one\n"
+                "you had (restore_audio in ds5haptics.ini).\n"
+                "Ctrl+C to stop.\n"
+                "Hide the real Bluetooth controller with HidHide so games don't see two controllers.\n\n"));
 
     unsigned lastInputs = 0;
     DWORD lastT = GetTickCount();
@@ -1688,6 +1833,8 @@ static int cmdVirtual(const Options& opt) {
         profHapticGain = v.hapticGain * (opt.gainSet ? opt.gain : 1.0f);
         bool maxChanged = profMaxVolume.exchange(v.maxSpeakerVolume) != v.maxSpeakerVolume;
         lowBatteryPct = profiles.lowBattery;
+        voiceOn = profiles.voice;
+        restoreAudioOn = profiles.restoreAudio;
         const int wantMode = opt.mode >= 0 ? opt.mode : v.mode;
         std::printf(tr("\nPerfil %s%s%s: modo %s, parlante x%.1f, háptica x%.1f%s\n", "\nProfile %s%s%s: mode %s, speaker x%.1f, haptics x%.1f%s\n"),
                     matched.empty() ? "general" : ("[" + matched + "]").c_str(),
@@ -1702,8 +1849,23 @@ static int cmdVirtual(const Options& opt) {
         if (readIni(text, iniTime)) profiles = ds5::ProfileSet::parse(text);
         applyProfile(true);
     }
+    bool wasImported = false;
+    DWORD importedSince = 0;
     while (!g_stop) {
         Sleep(500);
+        {
+            // Restaurar la salida/micrófono de audio si Windows eligió al mando recién aparecido
+            bool imp = server.imported();
+            if (imp && !wasImported) importedSince = GetTickCount();
+            wasImported = imp;
+        }
+        if (tick % 4 == 2 && restoreAudioOn) {
+            bool watching = importedSince && GetTickCount() - importedSince < 60000;
+            std::wstring done = audioGuard.poll(watching);
+            if (!done.empty())
+                std::printf(tr("\nWindows había elegido al mando como dispositivo de audio: vuelvo a %s.\n", "\nWindows had picked the controller as an audio device: switching back to %s.\n"),
+                            narrow(done).c_str());
+        }
         if (++tick % 4 == 0) {   // cada 2 s
             std::string text;
             FILETIME t{};
@@ -1737,7 +1899,7 @@ static int cmdVirtual(const Options& opt) {
                 autoWatching = false;
                 std::printf(tr("\nJuego en primer plano: %s\n", "\nGame in the foreground: %s\n"), fg.c_str());
                 applyProfile(true);
-                // Xbox automático: solo para juegos sin "modo" en su perfil, con el modo general en ps5
+                // Modo automático (xbox o ps4): solo para juegos sin "modo" en su perfil, con el modo general en ps5
                 if (profiles.autoXbox && opt.mode < 0 && profiles.explicitMode(fg) < 0 &&
                     profiles.general.mode == ds5::kModePs5 && padMode == ds5::kModePs5 &&
                     !usedDualSense.count(ds5::ProfileSet::baseName(fg))) {
@@ -1752,8 +1914,8 @@ static int cmdVirtual(const Options& opt) {
                     else if (dsSinceStart) {
                         autoWatching = true;
                         autoSince = nowA;
-                        std::printf(tr("Juego sin perfil: miro %u s si usa el DualSense; si no, paso a modo Xbox.\n", "Game without a profile: watching for %u s whether it uses the DualSense; if not, switching to Xbox mode.\n"),
-                                    unsigned(kAutoWaitMs / 1000));
+                        std::printf(tr("Juego sin perfil: miro %u s si usa el DualSense; si no, paso a modo %s.\n", "Game without a profile: watching for %u s whether it uses the DualSense; if not, switching to %s mode.\n"),
+                                    unsigned(kAutoWaitMs / 1000), ds5::padModeName(profiles.autoMode));
                     }
                 }
             }
@@ -1774,10 +1936,11 @@ static int cmdVirtual(const Options& opt) {
                 std::printf(tr("\n%s no usa mandos: no cambio nada.\n", "\n%s does not use controllers: nothing changed.\n"), currentGame.c_str());
             } else if (nowA - autoSince >= kAutoWaitMs) {
                 autoWatching = false;
-                autoOverride = ds5::kModeXbox;
-                std::printf(tr("\n%s no usó el DualSense en %u s: paso a modo Xbox", "\n%s did not use the DualSense in %u s: switching to Xbox mode"), currentGame.c_str(),
-                            unsigned(kAutoWaitMs / 1000));
-                if (appendIni(ds5::autoProfileBlock(currentGame))) {
+                autoOverride = profiles.autoMode == ds5::kModePs4 ? ds5::kModePs4 : ds5::kModeXbox;
+                std::printf(tra("\n%s no usó el DualSense en %u s: paso a modo %s", "\n%s did not use the DualSense in %u s: switching to %s mode",
+                                "\n%s no banca el DualSense (%u s sin usarlo): lo hacemos pasar por un mando %s"), currentGame.c_str(),
+                            unsigned(kAutoWaitMs / 1000), ds5::padModeName(autoOverride));
+                if (appendIni(ds5::autoProfileBlock(currentGame, autoOverride))) {
                     std::printf(tr(" y lo anoto en ds5haptics.ini como [%s].\n", " and saving it in ds5haptics.ini as [%s].\n"),
                                 ds5::ProfileSet::baseName(currentGame).c_str());
                     // Evitar que la recarga del archivo cuente como un cambio hecho a mano
@@ -1870,6 +2033,9 @@ static int cmdVirtual(const Options& opt) {
     server.stop();
     btThread.join();
     hapticThread.join();
+    sayCv.notify_all();
+    voiceThread.join();
+    CoUninitialize();
     WSACleanup();
     return 0;
 }
@@ -1940,7 +2106,10 @@ int wmain(int argc, wchar_t** wargv) {
     {
         int lang = -1;
         for (size_t i = 0; i + 1 < args.size(); ++i)
-            if (args[i] == "--lang") lang = ds5::ProfileSet::lower(args[i + 1]).rfind("en", 0) == 0 ? 1 : 0;
+            if (args[i] == "--lang") {
+                std::string l = ds5::ProfileSet::lower(args[i + 1]);
+                lang = l.rfind("en", 0) == 0 ? 1 : (l == "argento" || l == "es-ar" || l == "ar") ? 2 : 0;
+            }
         if (lang < 0) {
             std::string text;
             FILETIME t{};
@@ -1948,6 +2117,7 @@ int wmain(int argc, wchar_t** wargv) {
         }
         if (lang < 0) lang = (GetUserDefaultUILanguage() & 0x3FF) == 0x0A ? 0 : 1;   // 0x0A = LANG_SPANISH
         ds5::setEnglish(lang == 1);
+        ds5::setArgento(lang == 2);
     }
 
     Options opt;

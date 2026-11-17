@@ -61,8 +61,11 @@ struct ProfileSet {
     ProfileValues general;
     std::vector<Profile> games;
     int lowBattery = 15;        // % desde el que parpadea el LED del micrófono (0 = desactivado)
-    bool autoXbox = true;       // juegos sin perfil que no usan el DualSense pasan solos a modo Xbox
-    int language = -1;          // -1 = el de Windows, 0 = español, 1 = inglés
+    bool autoXbox = true;       // juegos sin perfil que no usan el DualSense cambian de modo solos
+    int autoMode = kModeXbox;   // a qué modo pasan esos juegos (xbox o ps4)
+    int language = -1;          // -1 = el de Windows, 0 = español, 1 = inglés, 2 = argento
+    bool voice = true;          // avisos hablados por el parlante del mando
+    bool restoreAudio = true;   // si Windows elige al mando como salida/entrada de audio, volver a la anterior
 
     // Nombre del programa sin carpeta ni ".exe", en minúsculas ("BatmanAK.exe" -> "batmanak")
     static std::string baseName(const std::string& exeName) {
@@ -161,10 +164,21 @@ struct ProfileSet {
                 if (inGeneral) ps.lowBattery = std::clamp(std::atoi(val.c_str()), 0, 95);
             } else if (key == "xbox_automatico" || key == "xbox_automático" || key == "auto_xbox") {
                 if (inGeneral) ps.autoXbox = parseBool(val);
+            } else if (key == "modo_automatico" || key == "modo_automático" || key == "auto_mode") {
+                if (inGeneral) {
+                    int m = parsePadMode(val);
+                    if (m == kModeXbox || m == kModePs4) { ps.autoMode = m; ps.autoXbox = true; }
+                    else if (!parseBool(val)) ps.autoXbox = false;   // "no"
+                }
+            } else if (key == "voz" || key == "voice") {
+                if (inGeneral) ps.voice = parseBool(val);
+            } else if (key == "restaurar_audio" || key == "restore_audio") {
+                if (inGeneral) ps.restoreAudio = parseBool(val);
             } else if (key == "idioma" || key == "language") {
                 std::string v = lower(trim(val));
-                if (inGeneral) ps.language = (v == "en" || v == "english" || v == "ingles" || v == "inglés") ? 1
-                                           : (v == "es" || v == "spanish" || v == "espanol" || v == "español") ? 0 : -1;
+                if (inGeneral) ps.language = (v == "en" || v == "english" || v == "ingles" || v == "inglés" || v == "ingl\xc3\xa9s") ? 1
+                                           : (v == "argento" || v == "es-ar" || v == "ar" || v == "rioplatense") ? 2
+                                           : (v == "es" || v == "spanish" || v == "espanol" || v == "español" || v == "espa\xc3\xb1ol") ? 0 : -1;
             }
         }
         return ps;
@@ -224,7 +238,13 @@ static const char* const kDefaultIniEs =
     "# xbox_automatico = si/no: un juego sin perfil que en 20 s no usa el DualSense (pero si usa\r\n"
     "#        mandos de Xbox) pasa solo a modo xbox, y se anota al final de este archivo.\r\n"
     "#        Navegadores y reproductores de video no cuentan. Solo vale en [general].\r\n"
-    "# idioma = es / en / auto: idioma de los mensajes (auto = el de Windows). Solo en [general].\r\n"
+    "# modo_automatico = xbox / ps4: a que modo pasan esos juegos (ps4 = iconos de PlayStation\r\n"
+    "#        en los juegos que admiten el mando de PS4). Solo en [general].\r\n"
+    "# voz = si/no: avisos hablados por el parlante del mando (modo, bateria baja).\r\n"
+    "# restaurar_audio = si/no: si Windows elige al mando como salida o microfono, vuelve\r\n"
+    "#        al que tenias. Solo en [general].\r\n"
+    "# idioma = es / en / argento / auto: idioma de los mensajes (auto = el de Windows).\r\n"
+    "#        Solo en [general].\r\n"
     "\r\n"
     "[general]\r\n"
     "parlante = 1\r\n"
@@ -233,6 +253,9 @@ static const char* const kDefaultIniEs =
     "modo = ps5\r\n"
     "bateria_baja = 15\r\n"
     "xbox_automatico = si\r\n"
+    "modo_automatico = xbox\r\n"
+    "voz = si\r\n"
+    "restaurar_audio = si\r\n"
     "idioma = auto\r\n"
     "\r\n"
     "# Un perfil por juego: entre corchetes, parte del nombre del .exe del juego.\r\n"
@@ -256,7 +279,13 @@ static const char* const kDefaultIniEn =
     "# auto_xbox = yes/no: a game without a profile that doesn't use the DualSense within 20 s\r\n"
     "#        (but does use Xbox controllers) switches to xbox mode by itself and is saved at the\r\n"
     "#        end of this file. Browsers and video players don't count. Only in [general].\r\n"
-    "# language = en / es / auto: message language (auto = the Windows language). Only in [general].\r\n"
+    "# auto_mode = xbox / ps4: which mode those games switch to (ps4 = PlayStation icons in\r\n"
+    "#        games that support the PS4 controller). Only in [general].\r\n"
+    "# voice = yes/no: spoken notices through the controller speaker (mode, low battery).\r\n"
+    "# restore_audio = yes/no: if Windows picks the controller as the audio output or mic,\r\n"
+    "#        switch back to the one you had. Only in [general].\r\n"
+    "# language = en / es / argento / auto: message language (auto = the Windows language).\r\n"
+    "#        Only in [general].\r\n"
     "\r\n"
     "[general]\r\n"
     "speaker = 1\r\n"
@@ -265,6 +294,9 @@ static const char* const kDefaultIniEn =
     "mode = ps5\r\n"
     "low_battery = 15\r\n"
     "auto_xbox = yes\r\n"
+    "auto_mode = xbox\r\n"
+    "voice = yes\r\n"
+    "restore_audio = yes\r\n"
     "language = auto\r\n"
     "\r\n"
     "# One profile per game: in brackets, part of the game's .exe name.\r\n"
@@ -311,13 +343,28 @@ static const char* const kIniUpgradeBlock3 =
     "[general]\r\n"
     "idioma = auto\r\n";
 
+// Cuarta actualización (v1.0.1): voz, restaurar el audio y a qué modo pasan los juegos
+static const char* const kIniUpgradeBlock4 =
+    "\r\n"
+    "# --- Opciones nuevas / New options (v1.0.1) ---\r\n"
+    "# voz = si/no: avisos hablados por el parlante del mando (modo, bateria baja).\r\n"
+    "# restaurar_audio = si/no: si Windows elige al mando como salida o microfono, vuelve al anterior.\r\n"
+    "# modo_automatico = xbox / ps4: a que modo pasan los juegos que no usan el DualSense.\r\n"
+    "# idioma tambien acepta: argento\r\n"
+    "# voice / restore_audio / auto_mode = the same, in English.\r\n"
+    "[general]\r\n"
+    "voz = si\r\n"
+    "restaurar_audio = si\r\n"
+    "modo_automatico = xbox\r\n";
+
 // Perfil que se agrega solo cuando un juego no usó el DualSense.
-inline std::string autoProfileBlock(const std::string& exeName) {
+inline std::string autoProfileBlock(const std::string& exeName, int mode = kModeXbox) {
+    const std::string m = padModeName(mode == kModePs4 ? kModePs4 : kModeXbox);
     if (isEnglish())
         return "\r\n# Added automatically: " + exeName + " did not use the DualSense\r\n[" +
-               ProfileSet::baseName(exeName) + "]\r\nmode = xbox\r\n";
+               ProfileSet::baseName(exeName) + "]\r\nmode = " + m + "\r\n";
     return "\r\n# Agregado automaticamente: " + exeName + " no uso el DualSense\r\n[" +
-           ProfileSet::baseName(exeName) + "]\r\nmodo = xbox\r\n";
+           ProfileSet::baseName(exeName) + "]\r\nmodo = " + m + "\r\n";
 }
 
 }  // namespace ds5
