@@ -17,11 +17,22 @@ namespace ds5 {
 
 class VoiceQueue {
 public:
-    // Agrega una frase (con 60 ms de silencio antes, para que el mando "despierte" el parlante)
-    void push(const std::vector<float>& mono, float gain = 1.0f) {
+    // Agrega una frase (con 60 ms de silencio antes, para que el mando "despierte" el parlante).
+    // La voz de Windows sale bajita: se normaliza al máximo y 'loudness' (1 a 10) la comprime
+    // con un limitador suave para que suene más fuerte en el parlante chiquito del mando.
+    void push(const std::vector<float>& mono, float loudness = 1.0f) {
+        float peak = 0.0f;
+        for (float s : mono) peak = std::max(peak, std::fabs(s));
+        const float norm = peak > 1e-4f ? 1.0f / peak : 1.0f;
+        const float g = std::clamp(loudness, 1.0f, 10.0f);
+        const float out = g > 1.0f ? 1.0f / std::tanh(g) : 1.0f;
         std::lock_guard<std::mutex> lk(mu_);
         buf_.insert(buf_.end(), 48000 * 60 / 1000, 0.0f);
-        for (float s : mono) buf_.push_back(std::clamp(s * gain, -1.0f, 1.0f));
+        for (float s : mono) {
+            float x = s * norm;
+            if (g > 1.0f) x = std::tanh(x * g) * out;
+            buf_.push_back(std::clamp(x * 0.98f, -1.0f, 1.0f));
+        }
         pending_ = buf_.size();
     }
 

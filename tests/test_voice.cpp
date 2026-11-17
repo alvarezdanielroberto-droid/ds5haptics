@@ -12,7 +12,7 @@ int main() {
     ds5::VoiceQueue q;
     CHECK(!q.active(), "vacía al empezar");
     std::vector<float> tone(4800, 0.5f);   // 100 ms
-    q.push(tone, 1.0f);
+    q.push(std::vector<float>(4800, 0.25f), 1.0f);   // se normaliza: 0.25 -> 0.98
     CHECK(q.active(), "activa con voz");
     // 60 ms de silencio antes de la voz: el primer bloque deja el audio del juego a la mitad
     std::vector<float> st(512 * 2, 0.4f);
@@ -22,7 +22,7 @@ int main() {
     for (int i = 0; i < 5; ++i) { std::vector<float> z(512 * 2, 0.0f); q.mixInto(z.data(), 512); }
     std::vector<float> v(512 * 2, 0.8f);
     q.mixInto(v.data(), 512);
-    CHECK(std::fabs(v[2 * 300] - 0.9f) < 1e-6f && std::fabs(v[2 * 300 + 1] - 0.9f) < 1e-6f, "voz mezclada en los dos canales (%.3f)", v[600]);
+    CHECK(std::fabs(v[2 * 300] - 1.0f) < 1e-6f && std::fabs(v[2 * 300 + 1] - 1.0f) < 1e-6f, "voz normalizada y mezclada en los dos canales (%.3f)", v[600]);
     std::vector<float> loud(512 * 2, 1.0f);
     q.mixInto(loud.data(), 512);
     CHECK(loud[0] <= 1.0f, "no satura");
@@ -32,6 +32,15 @@ int main() {
     std::vector<float> after(512 * 2, 0.3f);
     q.mixInto(after.data(), 512);
     CHECK(after[10] == 0.3f, "sin voz no toca el audio del juego");
+    // Con 'loudness' lo bajo sube mucho más que lo alto (limitador suave)
+    {
+        ds5::VoiceQueue q2;
+        q2.push(std::vector<float>{1.0f, 0.1f}, 3.0f);
+        std::vector<float> o(2882 * 2, 0.0f);
+        q2.mixInto(o.data(), 2882);
+        float hi = o[2880 * 2], lo = o[2881 * 2];
+        CHECK(hi <= 1.0f && hi > 0.95f && lo > 0.25f, "loudness 3: alto %.3f, bajo %.3f", hi, lo);
+    }
     q.push(tone);
     q.clear();
     CHECK(!q.active(), "clear");

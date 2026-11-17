@@ -65,6 +65,7 @@ struct ProfileSet {
     int autoMode = kModeXbox;   // a qué modo pasan esos juegos (xbox o ps4)
     int language = -1;          // -1 = el de Windows, 0 = español, 1 = inglés, 2 = argento
     bool voice = true;          // avisos hablados por el parlante del mando
+    float voiceVolume = 3.0f;   // volumen de los avisos (1 = como sale de Windows, hasta 10)
     bool restoreAudio = true;   // si Windows elige al mando como salida/entrada de audio, volver a la anterior
 
     // Nombre del programa sin carpeta ni ".exe", en minúsculas ("BatmanAK.exe" -> "batmanak")
@@ -172,6 +173,8 @@ struct ProfileSet {
                 }
             } else if (key == "voz" || key == "voice") {
                 if (inGeneral) ps.voice = parseBool(val);
+            } else if (key == "volumen_voz" || key == "voice_volume") {
+                if (inGeneral) ps.voiceVolume = std::max(1.0f, parseGain(val));
             } else if (key == "restaurar_audio" || key == "restore_audio") {
                 if (inGeneral) ps.restoreAudio = parseBool(val);
             } else if (key == "idioma" || key == "language") {
@@ -241,6 +244,7 @@ static const char* const kDefaultIniEs =
     "# modo_automatico = xbox / ps4: a que modo pasan esos juegos (ps4 = iconos de PlayStation\r\n"
     "#        en los juegos que admiten el mando de PS4). Solo en [general].\r\n"
     "# voz = si/no: avisos hablados por el parlante del mando (modo, bateria baja).\r\n"
+    "# volumen_voz = volumen de esos avisos (1 a 10). Solo en [general].\r\n"
     "# restaurar_audio = si/no: si Windows elige al mando como salida o microfono, vuelve\r\n"
     "#        al que tenias. Solo en [general].\r\n"
     "# idioma = es / en / argento / auto: idioma de los mensajes (auto = el de Windows).\r\n"
@@ -255,6 +259,7 @@ static const char* const kDefaultIniEs =
     "xbox_automatico = si\r\n"
     "modo_automatico = xbox\r\n"
     "voz = si\r\n"
+    "volumen_voz = 3\r\n"
     "restaurar_audio = si\r\n"
     "idioma = auto\r\n"
     "\r\n"
@@ -282,6 +287,7 @@ static const char* const kDefaultIniEn =
     "# auto_mode = xbox / ps4: which mode those games switch to (ps4 = PlayStation icons in\r\n"
     "#        games that support the PS4 controller). Only in [general].\r\n"
     "# voice = yes/no: spoken notices through the controller speaker (mode, low battery).\r\n"
+    "# voice_volume = volume of those notices (1 to 10). Only in [general].\r\n"
     "# restore_audio = yes/no: if Windows picks the controller as the audio output or mic,\r\n"
     "#        switch back to the one you had. Only in [general].\r\n"
     "# language = en / es / argento / auto: message language (auto = the Windows language).\r\n"
@@ -296,6 +302,7 @@ static const char* const kDefaultIniEn =
     "auto_xbox = yes\r\n"
     "auto_mode = xbox\r\n"
     "voice = yes\r\n"
+    "voice_volume = 3\r\n"
     "restore_audio = yes\r\n"
     "language = auto\r\n"
     "\r\n"
@@ -348,12 +355,14 @@ static const char* const kIniUpgradeBlock4 =
     "\r\n"
     "# --- Opciones nuevas / New options (v1.0.1) ---\r\n"
     "# voz = si/no: avisos hablados por el parlante del mando (modo, bateria baja).\r\n"
+    "# volumen_voz = volumen de esos avisos (1 a 10). Solo en [general].\r\n"
     "# restaurar_audio = si/no: si Windows elige al mando como salida o microfono, vuelve al anterior.\r\n"
     "# modo_automatico = xbox / ps4: a que modo pasan los juegos que no usan el DualSense.\r\n"
     "# idioma tambien acepta: argento\r\n"
     "# voice / restore_audio / auto_mode = the same, in English.\r\n"
     "[general]\r\n"
     "voz = si\r\n"
+    "volumen_voz = 3\r\n"
     "restaurar_audio = si\r\n"
     "modo_automatico = xbox\r\n";
 

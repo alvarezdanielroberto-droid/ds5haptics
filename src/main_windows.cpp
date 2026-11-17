@@ -1124,6 +1124,7 @@ static int cmdVirtual(const Options& opt) {
 
     // Opciones de [general] que se usan antes de cargar los perfiles (se actualizan al recargar)
     std::atomic<bool> voiceOn{true}, restoreAudioOn{true};
+    std::atomic<float> voiceVolume{3.0f};
     {
         ensureIni();
         std::string text;
@@ -1131,6 +1132,7 @@ static int cmdVirtual(const Options& opt) {
         if (readIni(text, t)) {
             ds5::ProfileSet p0 = ds5::ProfileSet::parse(text);
             voiceOn = p0.voice;
+            voiceVolume = p0.voiceVolume;
             restoreAudioOn = p0.restoreAudio;
         }
     }
@@ -1628,7 +1630,7 @@ static int cmdVirtual(const Options& opt) {
         uint8_t r[ds5::kUsbOutSize] = {};
         r[0] = 0x02;
         r[1] = 0x20 | 0x80;   // valid_flag0: volumen del parlante + control de audio
-        r[6] = 0x50;          // volumen del parlante
+        r[6] = 0x64;          // volumen del parlante: el máximo (como volumen_mando_max)
         r[8] = 0x30;          // control de audio: salida por el parlante del mando
         uint8_t bt[ds5::kMainReportSize];
         if (!ds5::usbOutputToBt(r, sizeof(r), outSeq++, bt)) return;
@@ -1666,7 +1668,7 @@ static int cmdVirtual(const Options& opt) {
             std::vector<float> pcm;
             if (!tts->synthesize(phrase(req.first, req.second, tts->spanish()), pcm)) continue;
             routeSpeaker();
-            voiceQ.push(pcm, 0.9f);
+            voiceQ.push(pcm, voiceVolume.load());
             for (int i = 0; i < 300 && voiceQ.active() && !g_stop; ++i) Sleep(50);
             Sleep(200);
             // Devolver al parlante el volumen y la salida que había puesto el juego (si puso)
@@ -1834,6 +1836,7 @@ static int cmdVirtual(const Options& opt) {
         bool maxChanged = profMaxVolume.exchange(v.maxSpeakerVolume) != v.maxSpeakerVolume;
         lowBatteryPct = profiles.lowBattery;
         voiceOn = profiles.voice;
+        voiceVolume = profiles.voiceVolume;
         restoreAudioOn = profiles.restoreAudio;
         const int wantMode = opt.mode >= 0 ? opt.mode : v.mode;
         std::printf(tr("\nPerfil %s%s%s: modo %s, parlante x%.1f, háptica x%.1f%s\n", "\nProfile %s%s%s: mode %s, speaker x%.1f, haptics x%.1f%s\n"),
