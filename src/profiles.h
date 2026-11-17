@@ -65,7 +65,7 @@ struct ProfileSet {
     int autoMode = kModeXbox;   // a qué modo pasan esos juegos (xbox o ps4)
     int language = -1;          // -1 = el de Windows, 0 = español, 1 = inglés, 2 = argento
     bool voice = true;          // avisos hablados por el parlante del mando
-    float voiceVolume = 3.0f;   // volumen de los avisos (1 = como sale de Windows, hasta 10)
+    float voiceVolume = 2.0f;   // volumen de los avisos (1 = como sale de Windows, hasta 10)
     bool restoreAudio = true;   // si Windows elige al mando como salida/entrada de audio, volver a la anterior
 
     // Nombre del programa sin carpeta ni ".exe", en minúsculas ("BatmanAK.exe" -> "batmanak")
@@ -259,7 +259,7 @@ static const char* const kDefaultIniEs =
     "xbox_automatico = si\r\n"
     "modo_automatico = xbox\r\n"
     "voz = si\r\n"
-    "volumen_voz = 3\r\n"
+    "volumen_voz = 2\r\n"
     "restaurar_audio = si\r\n"
     "idioma = auto\r\n"
     "\r\n"
@@ -302,7 +302,7 @@ static const char* const kDefaultIniEn =
     "auto_xbox = yes\r\n"
     "auto_mode = xbox\r\n"
     "voice = yes\r\n"
-    "voice_volume = 3\r\n"
+    "voice_volume = 2\r\n"
     "restore_audio = yes\r\n"
     "language = auto\r\n"
     "\r\n"
@@ -362,7 +362,7 @@ static const char* const kIniUpgradeBlock4 =
     "# voice / restore_audio / auto_mode = the same, in English.\r\n"
     "[general]\r\n"
     "voz = si\r\n"
-    "volumen_voz = 3\r\n"
+    "volumen_voz = 2\r\n"
     "restaurar_audio = si\r\n"
     "modo_automatico = xbox\r\n";
 

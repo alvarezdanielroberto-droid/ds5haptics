@@ -1124,7 +1124,7 @@ static int cmdVirtual(const Options& opt) {
 
     // Opciones de [general] que se usan antes de cargar los perfiles (se actualizan al recargar)
     std::atomic<bool> voiceOn{true}, restoreAudioOn{true};
-    std::atomic<float> voiceVolume{3.0f};
+    std::atomic<float> voiceVolume{2.0f};
     {
         ensureIni();
         std::string text;
@@ -1309,7 +1309,7 @@ static int cmdVirtual(const Options& opt) {
     };
 
     // Avisos hablados: se piden desde cualquier hilo y los dice un hilo aparte
-    enum SayKind { kSayOn = 0, kSayMode = 1, kSayBattery = 2 };
+    enum SayKind { kSayOn = 0, kSayMode = 1, kSayBattery = 2, kSayDesktop = 3 };
     std::mutex sayMu;
     std::condition_variable sayCv;
     std::deque<std::pair<int, int>> sayQueue;
@@ -1612,6 +1612,8 @@ static int cmdVirtual(const Options& opt) {
         const bool ar = es && ds5::isArgento();
         if (kind == kSayOn)
             return !es ? L"D S 5 haptics on." : ar ? L"De ese cinco h\u00e1ptics activado. A darle." : L"De ese cinco h\u00e1ptics activado.";
+        if (kind == kSayDesktop)   // se cerró el juego: vuelve el modo de todos los días
+            return !es ? L"Game closed. Desktop mode." : ar ? L"Se termin\u00f3 el juego. Modo escritorio." : L"Juego cerrado. Modo escritorio.";
         if (kind == kSayMode) {
             if (arg == ds5::kModeXbox)
                 return !es ? L"Xbox mode." : ar ? L"Modo Xbox. El juego ni se va a dar cuenta." : L"Modo Xbox.";
@@ -1725,6 +1727,7 @@ static int cmdVirtual(const Options& opt) {
                                    : tr("PS5 (DualSense completo)", "PS5 (full DualSense)");
     };
     // Cambia en caliente el mando que ve Windows: "desenchufa" el actual y "enchufa" el nuevo
+    bool closingGame = false;   // el cambio de modo es porque se cerró el juego
     auto switchMode = [&](int m) {
         if (m == padMode) return;
         std::printf(tr("\nCambiando el mando virtual a modo %s...\n", "\nSwitching the virtual controller to %s mode...\n"), describeMode(m));
@@ -1748,7 +1751,7 @@ static int cmdVirtual(const Options& opt) {
         if (!server.imported()) attachVirtual(5);
         if (m == ds5::kModePs5) dsPresentSince = GetTickCount();
         modeLight();
-        say(kSayMode, m);
+        if (closingGame) say(kSayDesktop, m); else say(kSayMode, m);
     };
 
     // Modo inicial: el de la línea de comandos o el de [general] en ds5haptics.ini
@@ -1881,11 +1884,13 @@ static int cmdVirtual(const Options& opt) {
             // Se cerró el juego: volver al modo general (DualSense, barra azul)
             if (currentPid && !processAlive(currentPid)) {
                 std::printf(tr("\nSe cerró %s: vuelvo al perfil general.\n", "\n%s closed: back to the general profile.\n"), currentGame.c_str());
+                closingGame = true;
                 currentGame.clear();
                 currentPid = 0;
                 autoWatching = false;
                 autoOverride = -1;
                 applyProfile(true);
+                closingGame = false;
             }
             bool full = false;
             DWORD fgPid = 0;

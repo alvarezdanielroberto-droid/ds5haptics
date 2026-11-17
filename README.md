@@ -76,7 +76,7 @@ Windows and forwards everything the game sends to the real controller over Bluet
 - **Games without DualSense support** are detected automatically and switched to Xbox mode
   (the first time, the game may need a restart). When the game closes, PS5 mode comes back.
   With `auto_mode = ps4` they switch to PS4 mode instead.
-- **Spoken notices:** louder or softer with `voice_volume = 1` to `10` (default 3); off with `voice = no`.
+- **Spoken notices:** louder or softer with `voice_volume = 1` to `10` (default 2); off with `voice = no`.
 - **Log:** `C:\ds5haptics\ds5haptics.log` shows what's going on.
 
 ## FAQ
@@ -188,7 +188,7 @@ y el parlante, en PC, solo funcionan por cable. ds5haptics crea en Windows un **
 - **Juegos sin soporte de DualSense:** el programa lo detecta solo y pasa a modo Xbox
   (la primera vez puede hacer falta reiniciar el juego). Al cerrar el juego vuelve a modo PS5.
   Con `modo_automatico = ps4` pasan a modo PS4.
-- **Avisos hablados:** más fuerte o más bajo con `volumen_voz = 1` a `10` (por defecto 3); se apagan con `voz = no`.
+- **Avisos hablados:** más fuerte o más bajo con `volumen_voz = 1` a `10` (por defecto 2); se apagan con `voz = no`.
 - **Registro:** `C:\ds5haptics\ds5haptics.log` muestra todo lo que pasa: qué juego detectó,
   qué perfil aplicó, la batería y los errores.
 
