@@ -93,7 +93,7 @@ int main() {
         for (size_t i = hap.size() / 2; i < hap.size(); ++i) hapRain = std::max(hapRain, std::fabs(hap[i]));
         for (size_t i = spk.size() / 2; i < spk.size(); ++i) spkRain = std::max(spkRain, std::fabs(spk[i]));
         CHECK(hapRain > 0.05f && hapRain < 0.8f, "lluvia: háptica suave (%.3f)", hapRain);
-        CHECK(spkRain < 0.01f, "lluvia: el parlante no suena (%.3f)", spkRain);
+        CHECK(spkRain < 0.35f, "lluvia: el parlante queda bajo (%.3f)", spkRain);
         CHECK(fx.impacts() == 0, "lluvia: sin golpes");
         CHECK(spk.size() == in.size(), "parlante a 48 kHz: misma cantidad de frames");
         // Explosión: golpe fuerte de 150 ms con graves
@@ -107,10 +107,11 @@ int main() {
         fx.process(boom.data(), boom.size() / 2, rate, hap, spk);
         float hapBoom = 0, spkBoom = 0;
         for (size_t i = 0; i < hap.size() / 3; ++i) hapBoom = std::max(hapBoom, std::fabs(hap[i]));
-        for (float v : spk) spkBoom = std::max(spkBoom, std::fabs(v));
+        for (float v : spk) spkBoom += v * v;
+        spkBoom = std::sqrt(spkBoom / float(spk.size()));   // nivel promedio (RMS)
         CHECK(fx.impacts() == 1, "explosión: un golpe (%u)", fx.impacts());
         CHECK(hapBoom > 0.9f, "explosión: háptica a fondo (%.3f)", hapBoom);
-        CHECK(spkBoom < 0.1f && fx.speakerHits() == 0, "explosión (grave): no va al parlante (%.3f)", spkBoom);
+        CHECK(spkBoom < 0.2f && fx.speakerHits() == 0, "explosión (grave): el parlante no sube (RMS %.3f)", spkBoom);
         // Voz: armónicos de 150 Hz con poca energía aguda, en frases -> solo háptica
         {
             std::vector<float> voice(rate * 2 * 2, 0.0f);   // 2 s
@@ -125,7 +126,7 @@ int main() {
             fx.process(voice.data(), voice.size() / 2, rate, hap, spk);
             float sv = 0;
             for (float x : spk) sv = std::max(sv, std::fabs(x));
-            CHECK(fx.speakerHits() == before && sv < 0.1f, "voz: no va al parlante (%u, %.3f)", fx.speakerHits() - before, sv);
+            CHECK(fx.speakerHits() == before && sv < 0.35f, "voz: el parlante no sube (%u, %.3f)", fx.speakerHits() - before, sv);
         }
         // Mecanismo / chirrido: ráfaga aguda de 4 kHz -> parlante
         {
@@ -140,8 +141,18 @@ int main() {
             float ss = 0, tail = 0;
             for (size_t i = 0; i < spk.size() / 3; ++i) ss = std::max(ss, std::fabs(spk[i]));
             for (size_t i = spk.size() - 4800; i < spk.size(); ++i) tail = std::max(tail, std::fabs(spk[i]));
-            CHECK(fx.speakerHits() == before + 1 && ss > 0.3f, "chirrido agudo: suena por el parlante (%u, %.3f)", fx.speakerHits() - before, ss);
-            CHECK(tail < 0.05f, "el parlante se cierra después (%.3f)", tail);
+            CHECK(fx.speakerHits() == before + 1 && ss > 0.5f, "chirrido agudo: el parlante sube a fondo (%u, %.3f)", fx.speakerHits() - before, ss);
+            CHECK(tail < 0.35f, "el parlante vuelve a bajar después (%.3f)", tail);
+            // Varios seguidos (batarangs): todos cuentan
+            std::vector<float> rep(rate * 2 * 8 / 5, 0.0f);   // 1,6 s, 4 chirridos cada 400 ms
+            for (size_t i = 0; i < rep.size() / 2; ++i) {
+                bool on = (i % (rate * 2 / 5)) < rate * 6 / 100;
+                rep[i * 2] = rep[i * 2 + 1] = (on ? 0.3f * std::sin(6.2831853f * 4000.0f * float(i) / rate) : 0.0f) + 0.02f * noise();
+            }
+            before = fx.speakerHits();
+            spk.clear();
+            fx.process(rep.data(), rep.size() / 2, rate, hap, spk);
+            CHECK(fx.speakerHits() - before == 4, "chirridos seguidos: los 4 suben el parlante (%u)", fx.speakerHits() - before);
         }
         // Volumen de Windows al 20%: la misma escena se siente parecida (normalización)
         ds5::SimFx fx2;

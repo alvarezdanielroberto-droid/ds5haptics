@@ -13,10 +13,10 @@
 //     del volumen de Windows.
 //   - Un golpe fuerte y repentino (explosión, choque de espadas, disparo) se detecta porque
 //     el volumen sube de golpe muy por encima del promedio: la háptica sube a fondo.
-//   - Por el parlante del mando salen solo los sonidos agudos y repentinos (mecanismos,
-//     chirridos, metal, el batarang): se detectan en la banda aguda (> 2,5 kHz) y solo si el
-//     sonido es "brillante" (la mayor parte de su energía es aguda). Las voces y los graves
-//     quedan para la háptica. Lo que sale por el parlante también va filtrado a agudos.
+//   - Por el parlante del mando sale la parte aguda del sonido (> 1,5 kHz) a volumen bajo, y
+//     sube a fondo con los sonidos agudos y repentinos (mecanismos, chirridos, metal, el
+//     batarang): se detectan en la banda aguda (> 2,5 kHz) y solo si el sonido es "brillante"
+//     (la mayor parte de su energía es aguda). Las voces y los graves quedan para la háptica.
 //   - La vibración clásica que pide el juego (motores grande y chico) se suma como ondas de
 //     40 y 130 Hz, para que no se pierda mientras hay háptica.
 #pragma once
@@ -87,7 +87,11 @@ public:
             const float ph = mh * mh;
             phFast_ += (ph - phFast_) * (ph > phFast_ ? atkFast_ : relFast_);
             phSlow_ += (phFast_ - phSlow_) * slow_;
-            const float ehFast = std::sqrt(phFast_), ehSlow = std::sqrt(phSlow_);
+            const float ehFast = std::sqrt(phFast_);
+            // Fondo de la banda aguda (lluvia, viento, ambiente): baja enseguida y sube despacio,
+            // así un sonido repetido (varios batarangs seguidos) sigue contando como repentino
+            bgHi_ = ehFast < bgHi_ ? bgHi_ + (ehFast - bgHi_) * bgDown_ : bgHi_ + (ehFast - bgHi_) * bgUp_;
+            const float ehSlow = bgHi_;
             refHi_ = ehFast > refHi_ ? ehFast : std::max(refHi_ * relRef_, kRefMinHi);
             // Parte aguda de la energía, promediada ~20 ms (un grave tarda en "arrancar": medio
             // ciclo de 60 Hz son 8 ms, y en ese rato el ruido agudo no tiene que ganar)
@@ -130,12 +134,14 @@ public:
             hap[i * 2] = std::tanh(hl);
             hap[i * 2 + 1] = std::tanh(hr);
 
-            // Parlante: solo la parte aguda del sonido (> 1,5 kHz), mientras la compuerta está
-            // abierta. Sin atraso extra, para que llegue lo antes posible.
+            // Parlante: siempre encendido con la parte aguda del sonido (> 1,5 kHz) a volumen bajo,
+            // y cuando hay un sonido agudo y repentino el volumen sube a fondo y vuelve a bajar.
+            // Así no se corta ni tiene que "arrancar" (sirenas, sonidos seguidos) y llega antes.
             const float al = hpL2_.run(hpL1_.run(l)), ar = hpR2_.run(hpR1_.run(r));
             float sl = 0, sr = 0;
-            if (cfg_.speaker && spkGate_ > 0.001f) {
-                const float g = spkGate_ * 0.7f / refHi_;
+            if (cfg_.speaker) {
+                float g = (kSpkBase + (1.0f - kSpkBase) * spkGate_) * 0.7f / std::max(refHi_, kRefSpk);
+                if (ehFast < 2.0f * kFloorHi) g *= ehFast / (2.0f * kFloorHi);   // silencio: no amplificar el soplido
                 sl = soft(al * g, cfg_.speakerGain);
                 sr = soft(ar * g, cfg_.speakerGain);
             }
@@ -168,6 +174,8 @@ private:
         spkHoldLen_ = int(0.15f * fs);
         spkRel_ = coef(60.0f);
         bAvg_ = coef(20.0f);
+        bgDown_ = coef(30.0f);
+        bgUp_ = coef(2000.0f);
         brightNeed_ = int(0.005f * fs);
         const float hpd = 1.0f - std::exp(-kTwoPi * 2500.0f / fs);   // detección: > 2,5 kHz
         const float hpo = 1.0f - std::exp(-kTwoPi * 1500.0f / fs);   // salida al parlante: > 1,5 kHz
@@ -209,6 +217,8 @@ private:
     static constexpr float kRefMin = 0.005f;   // amplificación máxima ~200x
     static constexpr float kFloorHi = 0.0003f; // silencio en la banda aguda
     static constexpr float kRefMinHi = 0.003f;
+    static constexpr float kRefSpk = 0.01f;    // amplificación máxima del parlante ~70x
+    static constexpr float kSpkBase = 0.2f;    // volumen del parlante entre golpes (1 = a fondo)
     static constexpr float kAmbient = 0.5f;    // háptica para lo suave
     static constexpr float kDrive = 1.8f;      // háptica en un golpe (satura suave: a fondo)
 
@@ -221,7 +231,7 @@ private:
     float ph1_ = 0, ph2_ = 0, w1_ = 0, w2_ = 0;
     Hp hpD1_, hpD2_, hpL1_, hpL2_, hpR1_, hpR2_;
     float phFast_ = 0, phSlow_ = 0, refHi_ = kRefMinHi, spkGate_ = 0, spkRel_ = 0;
-    float pB_ = 0, phB_ = 0, bAvg_ = 0;
+    float pB_ = 0, phB_ = 0, bAvg_ = 0, bgHi_ = 0, bgDown_ = 0, bgUp_ = 0;
     int spkHold_ = 0, spkHoldLen_ = 0, brightRun_ = 0, brightNeed_ = 1;
     double step_ = 1.0, rpos_ = 0;
     float pl_ = 0, pr_ = 0;

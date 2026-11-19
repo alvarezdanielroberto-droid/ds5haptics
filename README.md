@@ -35,7 +35,7 @@ Windows and forwards everything the game sends to the real controller over Bluet
 | 🎯 **Adaptive triggers** | L2/R2 resistance and effects, as the game designed them. |
 | 🔊 **Controller speaker** | The controller speaker sound, compressed and sent over Bluetooth. |
 | 🕹️ **PS4 and Xbox modes** | For games without DualSense support: the controller shows up as a DualShock 4 or an Xbox 360 controller. Detected automatically, or **shake the controller** to switch. |
-| 💥 **Simulated haptics and speaker** | In PS4/Xbox mode, the game's sound becomes haptics: soft for footsteps, rain and wind, full strength for hits and explosions. Sudden high-pitched sounds (mechanisms, squeaks, metal) also play through the controller speaker. |
+| 💥 **Simulated haptics and speaker** | In PS4/Xbox mode, the game's sound becomes haptics: soft for footsteps, rain and wind, full strength for hits and explosions. The high-pitched part of the sound plays softly through the controller speaker, and gets loud for sudden sounds like mechanisms, squeaks and metal. |
 | 📋 **Per-game profiles** | Speaker volume, haptics intensity and mode per game, applied automatically. |
 | 🔋 **Low battery warning** | At 15% or less, the mic button light pulses and the controller tells you. |
 | 🗣️ **Spoken notices** | The controller speaker says when ds5haptics is on, the mode it switched to and low battery, in your language. |
@@ -155,7 +155,7 @@ y el parlante, en PC, solo funcionan por cable. ds5haptics crea en Windows un **
 | 🎯 **Gatillos adaptativos** | Resistencia y efectos en L2 y R2, tal como los diseñó el juego. |
 | 🔊 **Parlante del mando** | El sonido del parlante del mando, comprimido y enviado por Bluetooth. |
 | 🕹️ **Modo PS4 y Xbox** | Para juegos sin soporte de DualSense: el mando se presenta como DualShock 4 o como mando de Xbox 360. Se detecta solo, o **agitá el mando** para cambiar. |
-| 💥 **Háptica y parlante simulados** | En modo PS4/Xbox, el sonido del juego se vuelve háptica: suave para pisadas, lluvia y viento, a fondo para golpes y explosiones. Los sonidos agudos y repentinos (mecanismos, chirridos, metal) suenan además por el parlante del mando. |
+| 💥 **Háptica y parlante simulados** | En modo PS4/Xbox, el sonido del juego se vuelve háptica: suave para pisadas, lluvia y viento, a fondo para golpes y explosiones. La parte aguda del sonido sale bajito por el parlante del mando, y sube con los sonidos repentinos como mecanismos, chirridos y metal. |
 | 📋 **Perfiles por juego** | Volumen del parlante, intensidad de la háptica y modo, por juego. Se aplican solos. |
 | 🔋 **Aviso de batería baja** | Con 15% o menos, la luz del botón de micrófono parpadea y el mando te lo dice. |
 | 🗣️ **Avisos hablados** | El parlante del mando avisa cuando ds5haptics se activa, el modo al que cambió y la batería baja, en tu idioma. |
