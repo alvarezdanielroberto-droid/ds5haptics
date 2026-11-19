@@ -1350,7 +1350,9 @@ static int cmdVirtual(const Options& opt) {
     ds5::SimFx simFx;
     std::atomic<bool> simActive{false}, simHapOn{true}, simSpkOn{false};
     std::atomic<bool> fastSim{true};          // haptica_rapida
-    std::atomic<int> fastSimBytes{32};        // 32 bytes = 5,3 ms de háptica por reporte
+    // Bytes de háptica por reporte 0x32. Con menos de 64 el mando no rellena: reproduce el
+    // reporte completo con ceros y suena un zumbido intermitente (probado). Quedan 64.
+    std::atomic<int> fastSimBytes{64};
     std::atomic<int> simSens{5};
 #ifdef DS5_WITH_OPUS
     const bool speakerOn = opt.speaker;
@@ -1578,8 +1580,8 @@ static int cmdVirtual(const Options& opt) {
         std::vector<float> spk(ds5::kSpeakerInFrames * 2);
         uint8_t opusPkt[ds5::kOpusBytes];
 #endif
-        // Háptica simulada sin parlante: reportes 0x32 (solo háptica, 142 bytes) de 'liteBytes'
-        // muestras: más cortos y más seguidos que los 0x36 con audio Opus -> menos atraso
+        // Háptica simulada sin parlante: reportes 0x32 (solo háptica, 142 bytes) en vez de los
+        // 0x36 con audio Opus (398 bytes): sin codificar audio y menos tiempo en el aire
         const size_t liteBytes = size_t(std::clamp(fastSimBytes.load(), 16, 64)) & ~size_t(1);
         auto liteNow = [&] {
             return fastSim && padMode != ds5::kModePs5 && simActive && !simSpkOn && !voiceQ.active();
