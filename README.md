@@ -35,7 +35,7 @@ Windows and forwards everything the game sends to the real controller over Bluet
 | 🎯 **Adaptive triggers** | L2/R2 resistance and effects, as the game designed them. |
 | 🔊 **Controller speaker** | The controller speaker sound, compressed and sent over Bluetooth. |
 | 🕹️ **PS4 and Xbox modes** | For games without DualSense support: the controller shows up as a DualShock 4 or an Xbox 360 controller. Detected automatically, or **shake the controller** to switch. |
-| 💥 **Simulated haptics and speaker** | In PS4/Xbox mode, the game's sound becomes haptics: soft for footsteps, rain and wind, full strength for hits and explosions. The high-pitched part of the sound plays softly through the controller speaker, and gets loud for sudden sounds like mechanisms, squeaks and metal. |
+| 💥 **Simulated haptics** | In PS4/Xbox mode, the game's sound becomes haptics, on top of the classic rumble: soft for footsteps, rain and wind, full strength for hits and explosions. |
 | 📋 **Per-game profiles** | Speaker volume, haptics intensity and mode per game, applied automatically. |
 | 🔋 **Low battery warning** | At 15% or less, the mic button light pulses and the controller tells you. |
 | 🗣️ **Spoken notices** | The controller speaker says when ds5haptics is on, the mode it switched to and low battery, in your language. |
@@ -81,9 +81,10 @@ Windows and forwards everything the game sends to the real controller over Bluet
   deciding (`auto_wait`).
 - **Shake the controller** hard to switch mode: Xbox → PS4 → PS5. The spoken notice tells you the
   new mode, and it's saved in that game's profile. Off with `shake = no`.
-- **Simulated haptics and speaker** (PS4/Xbox mode): `simulated_haptics`, `simulated_speaker` and
-  `sensitivity = 1` (only the clearest sounds) to `10` (almost everything), per game. They use the game's
-  own sound only on recent Windows 10 and 11; on older versions they use all PC sound.
+- **Simulated haptics** (PS4/Xbox mode): on/off with `simulated_haptics`, and `sensitivity = 1` to `10`
+  for how easily hits go full strength, per game. It uses the game's own sound only on recent
+  Windows 10 and 11; on older versions it uses all PC sound. `simulated_speaker = yes` also sends
+  high-pitched sounds to the controller speaker (experimental, off by default).
 - **Spoken notices:** louder or softer with `voice_volume = 1` to `10` (default 2); off with `voice = no`.
 - **Log:** `C:\ds5haptics\ds5haptics.log` shows what's going on.
 
@@ -155,7 +156,7 @@ y el parlante, en PC, solo funcionan por cable. ds5haptics crea en Windows un **
 | 🎯 **Gatillos adaptativos** | Resistencia y efectos en L2 y R2, tal como los diseñó el juego. |
 | 🔊 **Parlante del mando** | El sonido del parlante del mando, comprimido y enviado por Bluetooth. |
 | 🕹️ **Modo PS4 y Xbox** | Para juegos sin soporte de DualSense: el mando se presenta como DualShock 4 o como mando de Xbox 360. Se detecta solo, o **agitá el mando** para cambiar. |
-| 💥 **Háptica y parlante simulados** | En modo PS4/Xbox, el sonido del juego se vuelve háptica: suave para pisadas, lluvia y viento, a fondo para golpes y explosiones. La parte aguda del sonido sale bajito por el parlante del mando, y sube con los sonidos repentinos como mecanismos, chirridos y metal. |
+| 💥 **Háptica simulada** | En modo PS4/Xbox, el sonido del juego se vuelve háptica, además de la vibración clásica: suave para pisadas, lluvia y viento, a fondo para golpes y explosiones. |
 | 📋 **Perfiles por juego** | Volumen del parlante, intensidad de la háptica y modo, por juego. Se aplican solos. |
 | 🔋 **Aviso de batería baja** | Con 15% o menos, la luz del botón de micrófono parpadea y el mando te lo dice. |
 | 🗣️ **Avisos hablados** | El parlante del mando avisa cuando ds5haptics se activa, el modo al que cambió y la batería baja, en tu idioma. |
@@ -201,9 +202,10 @@ y el parlante, en PC, solo funcionan por cable. ds5haptics crea en Windows un **
   (`espera_automatico`).
 - **Agitá el mando** con fuerza para cambiar de modo: Xbox → PS4 → PS5. El aviso hablado te dice el
   modo nuevo, y queda anotado en el perfil del juego. Se apaga con `agitar = no`.
-- **Háptica y parlante simulados** (modo PS4/Xbox): `haptica_simulada`, `parlante_simulado` y
-  `sensibilidad = 1` (solo lo más claro) a `10` (casi todo), por juego. Usan solo el sonido del
-  juego en Windows 10 reciente y 11; en versiones más viejas, todo el sonido de la PC.
+- **Háptica simulada** (modo PS4/Xbox): se activa o apaga con `haptica_simulada`, y
+  `sensibilidad = 1` a `10` define qué tan fácil un golpe va a fondo, por juego. Usa solo el sonido
+  del juego en Windows 10 reciente y 11; en versiones más viejas, todo el sonido de la PC.
+  `parlante_simulado = si` manda además los sonidos agudos al parlante (experimental, apagado por defecto).
 - **Avisos hablados:** más fuerte o más bajo con `volumen_voz = 1` a `10` (por defecto 2); se apagan con `voz = no`.
 - **Registro:** `C:\ds5haptics\ds5haptics.log` muestra todo lo que pasa: qué juego detectó,
   qué perfil aplicó, la batería y los errores.

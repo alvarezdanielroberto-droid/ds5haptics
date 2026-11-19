@@ -1348,7 +1348,9 @@ static int cmdVirtual(const Options& opt) {
     ds5::VoiceQueue voiceQ;   // avisos hablados, se mezclan con el sonido del parlante
     // Modo Xbox/PS4: háptica y parlante simulados a partir del sonido del juego
     ds5::SimFx simFx;
-    std::atomic<bool> simActive{false}, simHapOn{true}, simSpkOn{true};
+    std::atomic<bool> simActive{false}, simHapOn{true}, simSpkOn{false};
+    std::atomic<bool> fastSim{true};          // haptica_rapida
+    std::atomic<int> fastSimBytes{32};        // 32 bytes = 5,3 ms de háptica por reporte
     std::atomic<int> simSens{5};
 #ifdef DS5_WITH_OPUS
     const bool speakerOn = opt.speaker;
@@ -1576,9 +1578,17 @@ static int cmdVirtual(const Options& opt) {
         std::vector<float> spk(ds5::kSpeakerInFrames * 2);
         uint8_t opusPkt[ds5::kOpusBytes];
 #endif
-        auto send = [&](const int8_t* chunk) {
+        // Háptica simulada sin parlante: reportes 0x32 (solo háptica, 142 bytes) de 'liteBytes'
+        // muestras: más cortos y más seguidos que los 0x36 con audio Opus -> menos atraso
+        const size_t liteBytes = size_t(std::clamp(fastSimBytes.load(), 16, 64)) & ~size_t(1);
+        auto liteNow = [&] {
+            return fastSim && padMode != ds5::kModePs5 && simActive && !simSpkOn && !voiceQ.active();
+        };
+        auto send = [&](const int8_t* chunk, size_t n = 0, bool lite = false) {
+            if (!n) n = nbytes;
+            (void)lite;
 #ifdef DS5_WITH_OPUS
-            if (encOk) {
+            if (encOk && !lite) {
                 speakerFifo.pop(spk.data());
                 voiceQ.mixInto(spk.data(), ds5::kSpeakerInFrames);
                 if (!speakerEnc.encode(spk.data(), opusPkt)) ++speakerErrors;
@@ -1591,7 +1601,7 @@ static int cmdVirtual(const Options& opt) {
                 return;
             }
 #endif
-            rep.setSamples(chunk, nbytes);
+            rep.setSamples(chunk, n);
             std::shared_lock<std::shared_mutex> lk(devMu);
             DWORD us = 0;
             if (!btLost && dev.write(rep.data(), rep.size(), opt.setOutputReport, 30, &us)) {
@@ -1604,7 +1614,9 @@ static int cmdVirtual(const Options& opt) {
                 // Modo directo: revisar cada 1 ms y mandar todo lo que ya esté completo
                 clk.sleepUntil(clk.now() + clk.ticks(0.001));
                 bool any = false;
-                while (haptics->pullExact(chunk, nbytes)) { send(chunk); any = true; }
+                const bool lite = liteNow();
+                const size_t nb = lite ? liteBytes : nbytes;
+                while (haptics->pullExact(chunk, nb)) { send(chunk, nb, lite); any = true; }
                 long long now = clk.now();
                 if (any) { lastReal = now; inGap = false; nextVoice = now + period; }
 #ifdef DS5_WITH_OPUS
@@ -1883,6 +1895,7 @@ static int cmdVirtual(const Options& opt) {
         simHapOn = v.simHaptics && !opt.noHaptics;
         simSpkOn = v.simSpeaker && speakerOn;
         simSens = v.sensitivity;
+        fastSim = profiles.fastHaptics;
         voiceOn = profiles.voice;
         voiceVolume = profiles.voiceVolume;
         restoreAudioOn = profiles.restoreAudio;

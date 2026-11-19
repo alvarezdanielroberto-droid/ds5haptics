@@ -207,14 +207,14 @@ int main() {
     {
         auto d = ds5::ProfileSet::parse(ds5::kDefaultIniEs);
         CHECK(d.autoWaitSec == 50 && d.shake && d.psButtonStats && d.statsHotkey == "alt+f11", "valores nuevos por defecto (es)");
-        CHECK(d.general.simHaptics && d.general.simSpeaker && d.general.sensitivity == 5, "simulados por defecto (es)");
+        CHECK(d.general.simHaptics && !d.general.simSpeaker && d.general.sensitivity == 5 && d.fastHaptics, "simulados por defecto (es): parlante apagado");
         auto e = ds5::ProfileSet::parse(ds5::kDefaultIniEn);
         CHECK(e.autoWaitSec == 50 && e.shake && e.general.simHaptics && e.statsHotkey == "alt+f11", "valores nuevos por defecto (en)");
         auto p = ds5::ProfileSet::parse("[general]\nespera_automatico = 90\nagitar = no\nboton_ps_estadisticas = no\natajo_estadisticas = Ctrl+Alt+D\n"
                                         "[mafia]\nmodo = xbox\nhaptica_simulada = no\nsensibilidad = 8\n");
         CHECK(p.autoWaitSec == 90 && !p.shake && !p.psButtonStats && p.statsHotkey == "ctrl+alt+d", "claves de [general]");
         auto v = p.resolve("mafia3definitiveedition.exe");
-        CHECK(!v.simHaptics && v.simSpeaker && v.sensitivity == 8 && v.mode == ds5::kModeXbox, "perfil por juego");
+        CHECK(!v.simHaptics && !v.simSpeaker && v.sensitivity == 8 && v.mode == ds5::kModeXbox, "perfil por juego");
         // Agitar anota el modo en el perfil: la sección repetida gana
         auto q = ds5::ProfileSet::parse(std::string("[batman]\nmodo = xbox\n") + ds5::shakeProfileBlock("batman", ds5::kModePs4));
         CHECK(q.resolve("BatmanAK.exe").mode == ds5::kModePs4, "modo elegido agitando");

@@ -49,7 +49,7 @@ struct ProfileValues {
     int mode = kModePs5;        // cómo se presenta el mando ante el juego
     // Modo Xbox/PS4: háptica y parlante "simulados" a partir del sonido del juego
     bool simHaptics = true;
-    bool simSpeaker = true;
+    bool simSpeaker = false;    // experimental: por ahora apagado por defecto
     int sensitivity = 5;        // 1 (solo golpes muy fuertes) a 10 (casi todo)
 };
 
@@ -75,6 +75,7 @@ struct ProfileSet {
     int autoWaitSec = 50;       // segundos que se espera antes del cambio automático de modo
     bool shake = true;          // agitar el mando cambia de modo
     bool psButtonStats = true;  // el botón PS muestra u oculta las estadísticas
+    bool fastHaptics = true;    // háptica simulada con reportes cortos (menos atraso)
     std::string statsHotkey = "alt+f11";
 
     // Nombre del programa sin carpeta ni ".exe", en minúsculas ("BatmanAK.exe" -> "batmanak")
@@ -198,6 +199,8 @@ struct ProfileSet {
                 if (inGeneral) ps.general.sensitivity = n; else if (cur) cur->sensitivity = n;
             } else if (key == "espera_automatico" || key == "espera_automático" || key == "espera_autom\xc3\xa1tico" || key == "auto_wait") {
                 if (inGeneral) ps.autoWaitSec = std::clamp(std::atoi(val.c_str()), 5, 600);
+            } else if (key == "haptica_rapida" || key == "háptica_rápida" || key == "h\xc3\xa1ptica_r\xc3\xa1pida" || key == "fast_haptics") {
+                if (inGeneral) ps.fastHaptics = parseBool(val);
             } else if (key == "agitar" || key == "shake") {
                 if (inGeneral) ps.shake = parseBool(val);
             } else if (key == "boton_ps_estadisticas" || key == "botón_ps_estadisticas" || key == "ps_button_stats") {
@@ -266,8 +269,10 @@ static const char* const kDefaultIniEs =
     "#        ps4; si no anda, xbox. Tambien se cambia agitando el mando.\r\n"
     "# haptica_simulada = si/no: en modo ps4/xbox, el sonido del juego se convierte en\r\n"
     "#        haptica (suave para pisadas, lluvia, viento; fuerte para golpes y explosiones).\r\n"
-    "# parlante_simulado = si/no: en modo ps4/xbox, la parte aguda del sonido sale bajito por\r\n"
-    "#        el parlante del mando y sube con mecanismos, chirridos y metal.\r\n"
+    "# parlante_simulado = si/no (EXPERIMENTAL): en modo ps4/xbox, la parte aguda del sonido\r\n"
+    "#        sale bajito por el parlante del mando y sube con mecanismos y chirridos.\r\n"
+    "# haptica_rapida = si/no: la haptica simulada usa reportes mas cortos (menos atraso).\r\n"
+    "#        Si se siente rara, ponelo en no. Solo en [general].\r\n"
     "# sensibilidad = 1 a 10: cuanto tiene que sonar algo para contar como golpe fuerte\r\n"
     "#        (1 = solo explosiones, 10 = casi todo).\r\n"
     "# bateria_baja = porcentaje desde el que parpadea la luz del microfono (0 = nunca).\r\n"
@@ -301,7 +306,7 @@ static const char* const kDefaultIniEs =
     "volumen_voz = 2\r\n"
     "restaurar_audio = si\r\n"
     "haptica_simulada = si\r\n"
-    "parlante_simulado = si\r\n"
+    "parlante_simulado = no\r\n"
     "sensibilidad = 5\r\n"
     "espera_automatico = 50\r\n"
     "agitar = si\r\n"
@@ -328,8 +333,10 @@ static const char* const kDefaultIniEn =
     "#        doesn't work, xbox. You can also switch by shaking the controller.\r\n"
     "# simulated_haptics = yes/no: in ps4/xbox mode, game sound becomes haptics (soft for\r\n"
     "#        footsteps, rain, wind; strong for hits and explosions).\r\n"
-    "# simulated_speaker = yes/no: in ps4/xbox mode, the high-pitched part of the sound plays\r\n"
-    "#        softly on the controller speaker and gets loud for mechanisms, squeaks and metal.\r\n"
+    "# simulated_speaker = yes/no (EXPERIMENTAL): in ps4/xbox mode, the high-pitched part of the\r\n"
+    "#        sound plays softly on the controller speaker and gets loud for mechanisms and squeaks.\r\n"
+    "# fast_haptics = yes/no: simulated haptics use shorter reports (less delay). If it feels\r\n"
+    "#        odd, set it to no. Only in [general].\r\n"
     "# sensitivity = 1 to 10: how loud something must be to count as a hit\r\n"
     "#        (1 = only explosions, 10 = almost everything).\r\n"
     "# low_battery = percentage at which the mic button light starts pulsing (0 = never).\r\n"
@@ -363,7 +370,7 @@ static const char* const kDefaultIniEn =
     "voice_volume = 2\r\n"
     "restore_audio = yes\r\n"
     "simulated_haptics = yes\r\n"
-    "simulated_speaker = yes\r\n"
+    "simulated_speaker = no\r\n"
     "sensitivity = 5\r\n"
     "auto_wait = 50\r\n"
     "shake = yes\r\n"
@@ -447,7 +454,7 @@ static const char* const kIniUpgradeBlock5 =
     "#          ps_button_stats / stats_hotkey.\r\n"
     "[general]\r\n"
     "haptica_simulada = si\r\n"
-    "parlante_simulado = si\r\n"
+    "parlante_simulado = no\r\n"
     "sensibilidad = 5\r\n"
     "espera_automatico = 50\r\n"
     "agitar = si\r\n"
