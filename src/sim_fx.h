@@ -131,8 +131,8 @@ public:
                 hl += v;
                 hr += v;
             }
-            hap[i * 2] = std::tanh(hl);
-            hap[i * 2 + 1] = std::tanh(hr);
+            hap[i * 2] = kHapOut * std::tanh(hl);
+            hap[i * 2 + 1] = kHapOut * std::tanh(hr);
 
             // Parlante: siempre encendido con la parte aguda del sonido (> 1,5 kHz) a volumen bajo,
             // y cuando hay un sonido agudo y repentino el volumen sube a fondo y vuelve a bajar.
@@ -140,7 +140,9 @@ public:
             const float al = hpL2_.run(hpL1_.run(l)), ar = hpR2_.run(hpR1_.run(r));
             float sl = 0, sr = 0;
             if (cfg_.speaker) {
-                float g = (kSpkBase + (1.0f - kSpkBase) * spkGate_) * 0.7f / std::max(refHi_, kRefSpk);
+                // Nivel de referencia lento (~50 ms): normalizar sin que el volumen "bombee"
+                refSpk_ = ehFast > refSpk_ ? refSpk_ + (ehFast - refSpk_) * spkRefAtk_ : std::max(refSpk_ * relRef_, kRefSpk);
+                float g = (kSpkBase + (kSpkPeak - kSpkBase) * spkGate_) * 0.5f / refSpk_;
                 if (ehFast < 2.0f * kFloorHi) g *= ehFast / (2.0f * kFloorHi);   // silencio: no amplificar el soplido
                 sl = soft(al * g, cfg_.speakerGain);
                 sr = soft(ar * g, cfg_.speakerGain);
@@ -178,7 +180,8 @@ private:
         bgUp_ = coef(2000.0f);
         brightNeed_ = int(0.005f * fs);
         const float hpd = 1.0f - std::exp(-kTwoPi * 2500.0f / fs);   // detección: > 2,5 kHz
-        const float hpo = 1.0f - std::exp(-kTwoPi * 1500.0f / fs);   // salida al parlante: > 1,5 kHz
+        const float hpo = 1.0f - std::exp(-kTwoPi * 1000.0f / fs);   // salida al parlante: > 1 kHz
+        spkRefAtk_ = coef(50.0f);
         hpD1_.a = hpD2_.a = hpd;
         hpL1_.a = hpL2_.a = hpR1_.a = hpR2_.a = hpo;
         warmup_ = int(1.5f * fs);
@@ -218,7 +221,9 @@ private:
     static constexpr float kFloorHi = 0.0003f; // silencio en la banda aguda
     static constexpr float kRefMinHi = 0.003f;
     static constexpr float kRefSpk = 0.01f;    // amplificación máxima del parlante ~70x
-    static constexpr float kSpkBase = 0.2f;    // volumen del parlante entre golpes (1 = a fondo)
+    static constexpr float kSpkBase = 0.08f;   // volumen del parlante entre golpes (1 = a fondo)
+    static constexpr float kSpkPeak = 0.8f;    // volumen con un sonido agudo (sin llegar a saturar)
+    static constexpr float kHapOut = 0.5f;     // intensidad de la háptica simulada (1 = a fondo)
     static constexpr float kAmbient = 0.5f;    // háptica para lo suave
     static constexpr float kDrive = 1.8f;      // háptica en un golpe (satura suave: a fondo)
 
@@ -231,6 +236,7 @@ private:
     float ph1_ = 0, ph2_ = 0, w1_ = 0, w2_ = 0;
     Hp hpD1_, hpD2_, hpL1_, hpL2_, hpR1_, hpR2_;
     float phFast_ = 0, phSlow_ = 0, refHi_ = kRefMinHi, spkGate_ = 0, spkRel_ = 0;
+    float refSpk_ = kRefSpk, spkRefAtk_ = 0;
     float pB_ = 0, phB_ = 0, bAvg_ = 0, bgHi_ = 0, bgDown_ = 0, bgUp_ = 0;
     int spkHold_ = 0, spkHoldLen_ = 0, brightRun_ = 0, brightNeed_ = 1;
     double step_ = 1.0, rpos_ = 0;

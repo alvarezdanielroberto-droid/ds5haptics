@@ -1920,8 +1920,9 @@ static int cmdVirtual(const Options& opt) {
         simFx.process(f, n, rate, simHap, simSpk);
         haptics->feed(simHap.data(), n, rate);
 #ifdef DS5_WITH_OPUS
-        // Menos margen que con un juego de DualSense: lo que importa acá es llegar rápido
-        if (c.speaker && !simSpk.empty()) speakerFifo.push(simSpk.data(), simSpk.size() / 2, 2, 1);
+        // Mismo margen que con un juego de DualSense: con menos, los paquetes de audio que llegan
+        // juntos se descartaban y el sonido se entrecortaba
+        if (c.speaker && !simSpk.empty()) speakerFifo.push(simSpk.data(), simSpk.size() / 2);
 #endif
     };
     auto stopSim = [&] {
