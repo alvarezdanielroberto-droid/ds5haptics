@@ -5,8 +5,8 @@
 //
 // tray_ui.h — Ícono en la bandeja del sistema y cuadro de estadísticas (solo Windows).
 //
-//   - Ícono "ds5haptics" junto al reloj. Clic izquierdo o Alt+Insert: muestra u oculta las
-//     estadísticas. Clic derecho: Ver estadísticas / Iniciar con Windows / Salir.
+//   - Ícono "ds5haptics" junto al reloj. Clic izquierdo, el atajo de teclado (Alt+F11 por
+//     defecto) o el botón PS: muestra u oculta las estadísticas. Clic derecho: Ver estadísticas / Iniciar con Windows / Salir.
 //   - Cuadro semitransparente arriba a la derecha, siempre visible, que deja pasar los clics
 //     al juego y no le quita el foco.
 //
@@ -89,8 +89,29 @@ public:
         stats_ = s;
     }
 
+    // Muestra u oculta las estadísticas (se puede llamar desde cualquier hilo)
+    void toggleStats() {
+        HWND h = hidden_.load();
+        if (h) PostMessageW(h, kToggleMsg, 0, 0);
+    }
+
+    // Atajo de teclado (mods = bits de MOD_ALT/MOD_CONTROL/MOD_SHIFT/MOD_WIN). Antes de start()
+    // o mientras corre: si cambia, se vuelve a registrar.
+    void setHotkey(unsigned mods, unsigned vk, const std::string& label) {
+        {
+            std::lock_guard<std::mutex> lk(mu_);
+            if (mods == hkMods_ && vk == hkVk_) return;
+            hkMods_ = mods;
+            hkVk_ = vk;
+            hkLabel_ = w(label);
+        }
+        HWND h = hidden_.load();
+        if (h) PostMessageW(h, kRehotkeyMsg, 0, 0);
+    }
+
 private:
-    enum : UINT { kTrayMsg = WM_APP + 1, kIdStats = 101, kIdAutostart = 102, kIdExit = 103,
+    enum : UINT { kTrayMsg = WM_APP + 1, kToggleMsg = WM_APP + 2, kRehotkeyMsg = WM_APP + 3,
+                  kIdStats = 101, kIdAutostart = 102, kIdExit = 103,
                   kTimerOverlay = 1, kTimerTip = 2, kHotkey = 1 };
 
     static std::wstring w(const std::string& s) {
@@ -234,7 +255,8 @@ private:
 
     void showMenu() {
         HMENU m = CreatePopupMenu();
-        AppendMenuW(m, MF_STRING | (overlayVisible_ ? MF_CHECKED : 0), kIdStats, trw(L"Ver estadísticas\tAlt+Insert", L"Show stats\tAlt+Insert"));
+        std::wstring statsItem = std::wstring(trw(L"Ver estadísticas", L"Show stats")) + L"\t" + hotkeyLabel();
+        AppendMenuW(m, MF_STRING | (overlayVisible_ ? MF_CHECKED : 0), kIdStats, statsItem.c_str());
         bool autoOn = cb_.autostartOn && cb_.autostartOn();
         AppendMenuW(m, MF_STRING | (autoOn ? MF_CHECKED : 0), kIdAutostart, trw(L"Iniciar con Windows", L"Start with Windows"));
         AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
@@ -420,7 +442,8 @@ private:
 
         SelectObject(dc, fontSmall_);
         SetTextColor(dc, dim);
-        const wchar_t* foot = trw(L"Alt+Insert para ocultar", L"Alt+Insert to hide");
+        std::wstring footS = hotkeyLabel() + trw(L" o botón PS para ocultar", L" or PS button to hide");
+        const wchar_t* foot = footS.c_str();
         TextOutW(dc, x0, rc.bottom - px(22), foot, int(wcslen(foot)));
 
         SelectObject(dc, oldFont);
@@ -448,6 +471,31 @@ private:
             if (*f) { DeleteObject(*f); *f = nullptr; }
     }
 
+    std::wstring hotkeyLabel() {
+        std::lock_guard<std::mutex> lk(mu_);
+        return hkLabel_;
+    }
+
+    void registerHotkey(HWND h) {
+        unsigned mods, vk;
+        std::wstring lab;
+        {
+            std::lock_guard<std::mutex> lk(mu_);
+            mods = hkMods_;
+            vk = hkVk_;
+            lab = hkLabel_;
+        }
+        UnregisterHotKey(h, kHotkey);
+        if (!vk) return;
+        if (!RegisterHotKey(h, kHotkey, mods | MOD_NOREPEAT, vk)) {
+            std::string l8;
+            int n = WideCharToMultiByte(CP_UTF8, 0, lab.c_str(), -1, nullptr, 0, nullptr, nullptr);
+            if (n > 1) { l8.resize(size_t(n - 1)); WideCharToMultiByte(CP_UTF8, 0, lab.c_str(), -1, &l8[0], n, nullptr, nullptr); }
+            log(l8 + tr(": no se pudo registrar el atajo (otro programa lo usa). Las estadísticas se abren con el botón PS o con clic en el ícono.",
+                        ": could not register the shortcut (another program uses it). Open the stats with the PS button or by clicking the icon."));
+        }
+    }
+
     // ------------------------------------------------------------ ventanas ----
     static LRESULT CALLBACK hiddenProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
         Tray* t = reinterpret_cast<Tray*>(GetWindowLongPtrW(h, GWLP_USERDATA));
@@ -460,6 +508,12 @@ private:
             return 0;
         case WM_HOTKEY:
             if (wp == kHotkey) t->toggleOverlay();
+            return 0;
+        case kToggleMsg:
+            t->toggleOverlay();
+            return 0;
+        case kRehotkeyMsg:
+            t->registerHotkey(h);
             return 0;
         case WM_TIMER:
             if (wp == kTimerTip) t->refreshIcon();
@@ -542,16 +596,14 @@ private:
 
         addIcon();
         SetTimer(hidden, kTimerTip, 2000, nullptr);
-        if (!RegisterHotKey(hidden, kHotkey, MOD_ALT | MOD_NOREPEAT, VK_INSERT))
-            log(tr("No se pudo registrar Alt+Insert (otro programa lo usa). Las estadísticas se abren con clic en el ícono.",
-                   "Could not register Alt+Insert (another program uses it). Click the icon to open the stats."));
+        registerHotkey(hidden);
 
         MSG msg;
         while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
-        UnregisterHotKey(nullptr, kHotkey);
+        UnregisterHotKey(hidden, kHotkey);
         removeIcon();
         if (overlay_) { DestroyWindow(overlay_); overlay_ = nullptr; }
         hidden_ = nullptr;
@@ -562,6 +614,8 @@ private:
     std::thread thread_;
     std::mutex mu_;
     Stats stats_;
+    unsigned hkMods_ = 0x0001, hkVk_ = 0x7A;   // Alt+F11
+    std::wstring hkLabel_ = L"Alt+F11";
     std::atomic<HWND> hidden_{nullptr};
     HWND overlay_ = nullptr;
     HICON icon_ = nullptr;

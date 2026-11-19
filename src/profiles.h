@@ -47,6 +47,10 @@ struct ProfileValues {
     float hapticGain = 1.0f;
     bool maxSpeakerVolume = false;
     int mode = kModePs5;        // cómo se presenta el mando ante el juego
+    // Modo Xbox/PS4: háptica y parlante "simulados" a partir del sonido del juego
+    bool simHaptics = true;
+    bool simSpeaker = true;
+    int sensitivity = 5;        // 1 (solo golpes muy fuertes) a 10 (casi todo)
 };
 
 struct Profile {
@@ -55,6 +59,7 @@ struct Profile {
     float hapticGain = -1;
     int maxSpeakerVolume = -1;
     int mode = -1;
+    int simHaptics = -1, simSpeaker = -1, sensitivity = -1;
 };
 
 struct ProfileSet {
@@ -67,6 +72,10 @@ struct ProfileSet {
     bool voice = true;          // avisos hablados por el parlante del mando
     float voiceVolume = 2.0f;   // volumen de los avisos (1 = como sale de Windows, hasta 10)
     bool restoreAudio = true;   // si Windows elige al mando como salida/entrada de audio, volver a la anterior
+    int autoWaitSec = 50;       // segundos que se espera antes del cambio automático de modo
+    bool shake = true;          // agitar el mando cambia de modo
+    bool psButtonStats = true;  // el botón PS muestra u oculta las estadísticas
+    std::string statsHotkey = "alt+f11";
 
     // Nombre del programa sin carpeta ni ".exe", en minúsculas ("BatmanAK.exe" -> "batmanak")
     static std::string baseName(const std::string& exeName) {
@@ -98,6 +107,9 @@ struct ProfileSet {
             if (g.hapticGain >= 0) v.hapticGain = g.hapticGain;
             if (g.maxSpeakerVolume >= 0) v.maxSpeakerVolume = g.maxSpeakerVolume != 0;
             if (g.mode >= 0) v.mode = g.mode;
+            if (g.simHaptics >= 0) v.simHaptics = g.simHaptics != 0;
+            if (g.simSpeaker >= 0) v.simSpeaker = g.simSpeaker != 0;
+            if (g.sensitivity >= 0) v.sensitivity = g.sensitivity;
             if (matched) *matched = g.match;
             break;   // el primero que coincide
         }
@@ -177,6 +189,21 @@ struct ProfileSet {
                 if (inGeneral) ps.voiceVolume = std::max(1.0f, parseGain(val));
             } else if (key == "restaurar_audio" || key == "restore_audio") {
                 if (inGeneral) ps.restoreAudio = parseBool(val);
+            } else if (key == "haptica_simulada" || key == "háptica_simulada" || key == "h\xc3\xa1ptica_simulada" || key == "simulated_haptics") {
+                if (inGeneral) ps.general.simHaptics = parseBool(val); else if (cur) cur->simHaptics = parseBool(val) ? 1 : 0;
+            } else if (key == "parlante_simulado" || key == "simulated_speaker") {
+                if (inGeneral) ps.general.simSpeaker = parseBool(val); else if (cur) cur->simSpeaker = parseBool(val) ? 1 : 0;
+            } else if (key == "sensibilidad" || key == "sensitivity") {
+                int n = std::clamp(std::atoi(val.c_str()), 1, 10);
+                if (inGeneral) ps.general.sensitivity = n; else if (cur) cur->sensitivity = n;
+            } else if (key == "espera_automatico" || key == "espera_automático" || key == "espera_autom\xc3\xa1tico" || key == "auto_wait") {
+                if (inGeneral) ps.autoWaitSec = std::clamp(std::atoi(val.c_str()), 5, 600);
+            } else if (key == "agitar" || key == "shake") {
+                if (inGeneral) ps.shake = parseBool(val);
+            } else if (key == "boton_ps_estadisticas" || key == "botón_ps_estadisticas" || key == "ps_button_stats") {
+                if (inGeneral) ps.psButtonStats = parseBool(val);
+            } else if (key == "atajo_estadisticas" || key == "atajo_estadísticas" || key == "stats_hotkey") {
+                if (inGeneral) ps.statsHotkey = lower(trim(val));
             } else if (key == "idioma" || key == "language") {
                 std::string v = lower(trim(val));
                 if (inGeneral) ps.language = (v == "en" || v == "english" || v == "ingles" || v == "inglés" || v == "ingl\xc3\xa9s") ? 1
@@ -235,12 +262,24 @@ static const char* const kDefaultIniEs =
     "# volumen_mando_max = si/no: ignora el volumen de parlante que pide el juego y usa el maximo\r\n"
     "# modo = ps5 / ps4 / xbox: como ve el juego al mando. ps5 = DualSense completo (haptica,\r\n"
     "#        gatillos, parlante). ps4 y xbox = para juegos que no admiten el DualSense\r\n"
-    "#        (solo vibracion clasica). Probar primero ps4; si no anda, xbox.\r\n"
+    "#        (vibracion clasica, mas la haptica y el parlante simulados). Probar primero\r\n"
+    "#        ps4; si no anda, xbox. Tambien se cambia agitando el mando.\r\n"
+    "# haptica_simulada = si/no: en modo ps4/xbox, el sonido del juego se convierte en\r\n"
+    "#        haptica (suave para pisadas, lluvia, viento; fuerte para golpes y explosiones).\r\n"
+    "# parlante_simulado = si/no: en modo ps4/xbox, los golpes fuertes suenan tambien\r\n"
+    "#        por el parlante del mando.\r\n"
+    "# sensibilidad = 1 a 10: cuanto tiene que sonar algo para contar como golpe fuerte\r\n"
+    "#        (1 = solo explosiones, 10 = casi todo).\r\n"
     "# bateria_baja = porcentaje desde el que parpadea la luz del microfono (0 = nunca).\r\n"
     "#        Solo vale en [general].\r\n"
-    "# xbox_automatico = si/no: un juego sin perfil que en 20 s no usa el DualSense (pero si usa\r\n"
+    "# xbox_automatico = si/no: un juego sin perfil que en 50 s no usa el DualSense (pero si usa\r\n"
     "#        mandos de Xbox) pasa solo a modo xbox, y se anota al final de este archivo.\r\n"
     "#        Navegadores y reproductores de video no cuentan. Solo vale en [general].\r\n"
+    "# espera_automatico = segundos que espera antes de ese cambio (por defecto 50).\r\n"
+    "# agitar = si/no: agitar fuerte el mando cambia de modo (xbox -> ps4 -> ps5) y lo anota\r\n"
+    "#        en el perfil del juego. Solo en [general].\r\n"
+    "# boton_ps_estadisticas = si/no: el boton PS muestra u oculta las estadisticas.\r\n"
+    "# atajo_estadisticas = atajo de teclado de las estadisticas (ej. alt+f11, ctrl+alt+d).\r\n"
     "# modo_automatico = xbox / ps4: a que modo pasan esos juegos (ps4 = iconos de PlayStation\r\n"
     "#        en los juegos que admiten el mando de PS4). Solo en [general].\r\n"
     "# voz = si/no: avisos hablados por el parlante del mando (modo, bateria baja).\r\n"
@@ -261,6 +300,13 @@ static const char* const kDefaultIniEs =
     "voz = si\r\n"
     "volumen_voz = 2\r\n"
     "restaurar_audio = si\r\n"
+    "haptica_simulada = si\r\n"
+    "parlante_simulado = si\r\n"
+    "sensibilidad = 5\r\n"
+    "espera_automatico = 50\r\n"
+    "agitar = si\r\n"
+    "boton_ps_estadisticas = si\r\n"
+    "atajo_estadisticas = alt+f11\r\n"
     "idioma = auto\r\n"
     "\r\n"
     "# Un perfil por juego: entre corchetes, parte del nombre del .exe del juego.\r\n"
@@ -278,12 +324,24 @@ static const char* const kDefaultIniEn =
     "# max_controller_volume = yes/no: ignore the speaker volume the game asks for and use the maximum\r\n"
     "# mode = ps5 / ps4 / xbox: how games see the controller. ps5 = full DualSense (haptics,\r\n"
     "#        triggers, speaker). ps4 and xbox = for games without DualSense support\r\n"
-    "#        (classic rumble only). Try ps4 first; if it doesn't work, xbox.\r\n"
+    "#        (classic rumble, plus simulated haptics and speaker). Try ps4 first; if it\r\n"
+    "#        doesn't work, xbox. You can also switch by shaking the controller.\r\n"
+    "# simulated_haptics = yes/no: in ps4/xbox mode, game sound becomes haptics (soft for\r\n"
+    "#        footsteps, rain, wind; strong for hits and explosions).\r\n"
+    "# simulated_speaker = yes/no: in ps4/xbox mode, loud hits also play through the\r\n"
+    "#        controller speaker.\r\n"
+    "# sensitivity = 1 to 10: how loud something must be to count as a hit\r\n"
+    "#        (1 = only explosions, 10 = almost everything).\r\n"
     "# low_battery = percentage at which the mic button light starts pulsing (0 = never).\r\n"
     "#        Only in [general].\r\n"
-    "# auto_xbox = yes/no: a game without a profile that doesn't use the DualSense within 20 s\r\n"
+    "# auto_xbox = yes/no: a game without a profile that doesn't use the DualSense within 50 s\r\n"
     "#        (but does use Xbox controllers) switches to xbox mode by itself and is saved at the\r\n"
     "#        end of this file. Browsers and video players don't count. Only in [general].\r\n"
+    "# auto_wait = seconds to wait before that switch (default 50).\r\n"
+    "# shake = yes/no: shaking the controller hard switches mode (xbox -> ps4 -> ps5) and\r\n"
+    "#        saves it in the game's profile. Only in [general].\r\n"
+    "# ps_button_stats = yes/no: the PS button shows or hides the stats.\r\n"
+    "# stats_hotkey = keyboard shortcut for the stats (e.g. alt+f11, ctrl+alt+d).\r\n"
     "# auto_mode = xbox / ps4: which mode those games switch to (ps4 = PlayStation icons in\r\n"
     "#        games that support the PS4 controller). Only in [general].\r\n"
     "# voice = yes/no: spoken notices through the controller speaker (mode, low battery).\r\n"
@@ -304,6 +362,13 @@ static const char* const kDefaultIniEn =
     "voice = yes\r\n"
     "voice_volume = 2\r\n"
     "restore_audio = yes\r\n"
+    "simulated_haptics = yes\r\n"
+    "simulated_speaker = yes\r\n"
+    "sensitivity = 5\r\n"
+    "auto_wait = 50\r\n"
+    "shake = yes\r\n"
+    "ps_button_stats = yes\r\n"
+    "stats_hotkey = alt+f11\r\n"
     "language = auto\r\n"
     "\r\n"
     "# One profile per game: in brackets, part of the game's .exe name.\r\n"
@@ -365,6 +430,83 @@ static const char* const kIniUpgradeBlock4 =
     "volumen_voz = 2\r\n"
     "restaurar_audio = si\r\n"
     "modo_automatico = xbox\r\n";
+
+// Quinta actualización (v1.1): háptica/parlante simulados, agitar, botón PS, espera y atajo
+static const char* const kIniUpgradeBlock5 =
+    "\r\n"
+    "# --- Opciones nuevas / New options (v1.1) ---\r\n"
+    "# haptica_simulada / parlante_simulado = si/no: en modo ps4/xbox, el sonido del juego se\r\n"
+    "#        convierte en haptica, y los golpes fuertes suenan tambien por el parlante del mando.\r\n"
+    "# sensibilidad = 1 a 10: cuanto tiene que sonar algo para contar como golpe (1 = solo explosiones).\r\n"
+    "# espera_automatico = segundos antes del cambio automatico a xbox/ps4 (antes eran 20).\r\n"
+    "# agitar = si/no: agitar fuerte el mando cambia de modo y lo anota en el perfil del juego.\r\n"
+    "# boton_ps_estadisticas = si/no: el boton PS muestra u oculta las estadisticas.\r\n"
+    "# atajo_estadisticas = atajo de teclado de las estadisticas (antes Alt+Insert).\r\n"
+    "# English: simulated_haptics / simulated_speaker / sensitivity / auto_wait / shake /\r\n"
+    "#          ps_button_stats / stats_hotkey.\r\n"
+    "[general]\r\n"
+    "haptica_simulada = si\r\n"
+    "parlante_simulado = si\r\n"
+    "sensibilidad = 5\r\n"
+    "espera_automatico = 50\r\n"
+    "agitar = si\r\n"
+    "boton_ps_estadisticas = si\r\n"
+    "atajo_estadisticas = alt+f11\r\n";
+
+// Modo elegido agitando el mando: se anota en el perfil del juego. 'section' es el nombre
+// del perfil que ya coincide con el juego (si hay) o el del .exe; la sección repetida se
+// une a la anterior y el último "modo" gana.
+inline std::string shakeProfileBlock(const std::string& section, int mode) {
+    const std::string m = padModeName(mode);
+    if (isEnglish())
+        return "\r\n# Chosen by shaking the controller\r\n[" + section + "]\r\nmode = " + m + "\r\n";
+    return "\r\n# Elegido agitando el mando\r\n[" + section + "]\r\nmodo = " + m + "\r\n";
+}
+
+// Atajo de teclado ("alt+f11", "ctrl+alt+d"...) -> modificadores (bits de MOD_ALT=1,
+// MOD_CONTROL=2, MOD_SHIFT=4, MOD_WIN=8) y tecla virtual. false si no se entiende.
+inline bool parseHotkey(const std::string& text, unsigned& mods, unsigned& vk, std::string* label = nullptr) {
+    mods = 0;
+    vk = 0;
+    std::string lab;
+    size_t pos = 0;
+    std::string t = ProfileSet::lower(ProfileSet::trim(text));
+    while (pos <= t.size()) {
+        size_t plus = t.find('+', pos);
+        std::string part = ProfileSet::trim(t.substr(pos, plus == std::string::npos ? std::string::npos : plus - pos));
+        pos = plus == std::string::npos ? t.size() + 1 : plus + 1;
+        if (part.empty()) return false;
+        std::string pretty;
+        if (part == "alt") { mods |= 1; pretty = "Alt"; }
+        else if (part == "ctrl" || part == "control") { mods |= 2; pretty = "Ctrl"; }
+        else if (part == "shift" || part == "mayus" || part == "mayús") { mods |= 4; pretty = "Shift"; }
+        else if (part == "win") { mods |= 8; pretty = "Win"; }
+        else {
+            if (vk) return false;   // dos teclas comunes
+            if (part.size() >= 2 && part[0] == 'f' && std::isdigit((unsigned char)part[1])) {
+                int n = std::atoi(part.c_str() + 1);
+                if (n < 1 || n > 24) return false;
+                vk = 0x70u + unsigned(n - 1);
+                pretty = "F" + std::to_string(n);
+            } else if (part.size() == 1 && (std::isalnum((unsigned char)part[0]))) {
+                vk = unsigned(std::toupper((unsigned char)part[0]));
+                pretty = std::string(1, char(vk));
+            } else if (part == "insert" || part == "ins") { vk = 0x2D; pretty = "Insert"; }
+            else if (part == "home" || part == "inicio") { vk = 0x24; pretty = "Home"; }
+            else if (part == "end" || part == "fin") { vk = 0x23; pretty = "End"; }
+            else if (part == "pageup" || part == "repag") { vk = 0x21; pretty = "PageUp"; }
+            else if (part == "pagedown" || part == "avpag") { vk = 0x22; pretty = "PageDown"; }
+            else if (part == "pause" || part == "pausa") { vk = 0x13; pretty = "Pause"; }
+            else if (part == "scrolllock" || part == "bloqdespl") { vk = 0x91; pretty = "ScrollLock"; }
+            else return false;
+        }
+        if (!lab.empty()) lab += "+";
+        lab += pretty;
+    }
+    if (!vk) return false;
+    if (label) *label = lab;
+    return true;
+}
 
 // Perfil que se agrega solo cuando un juego no usó el DualSense.
 inline std::string autoProfileBlock(const std::string& exeName, int mode = kModeXbox) {

@@ -23,14 +23,14 @@ ds5haptics stop               detiene el que corre sin ventana
 En segundo plano espera a que prendas el mando (botón PS) y se conecta solo. Lo que
 normalmente muestra la consola queda en `ds5haptics.log`, junto al programa.
 
-### Ícono en la bandeja y estadísticas (Alt+Insert)
+### Ícono en la bandeja y estadísticas (botón PS o Alt+F11)
 
 Mientras ds5haptics corre aparece un ícono con forma de mando junto al reloj
 (Windows 11 lo puede dejar dentro de la flechita `^`: arrastralo a la barra o activalo en
 Configuración > Personalización > Barra de tareas > Otros iconos de la bandeja del sistema).
 
 - **Pasar el mouse por encima:** modo y batería.
-- **Clic izquierdo o Alt+Insert:** muestra u oculta el cuadro de estadísticas arriba a la derecha.
+- **Clic izquierdo, botón PS o Alt+F11:** muestra u oculta el cuadro de estadísticas arriba a la derecha.
   Es semitransparente, deja pasar los clics al juego y no le quita el foco. Muestra batería
   (dibujo y porcentaje), juego y perfil, conexión Bluetooth, háptica con su nivel, gatillos,
   parlante con el volumen que pide el juego, y la latencia que agrega ds5haptics.

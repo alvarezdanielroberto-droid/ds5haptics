@@ -62,6 +62,9 @@ extern "C" {
 #include "audio_default.h"
 #include "voice_tts.h"
 #include "voice_queue.h"
+#include "gestures.h"
+#include "sim_fx.h"
+#include "process_capture.h"
 
 using ds5::tr;
 using ds5::tra;
@@ -908,12 +911,14 @@ static void ensureIni() {
         const bool need2 = !englishIni && low.find("xbox_automatico") == std::string::npos;
         const bool need3 = low.find("idioma") == std::string::npos && low.find("language") == std::string::npos;
         const bool need4 = low.find("restaurar_audio") == std::string::npos && low.find("restore_audio") == std::string::npos;
-        if (!need1 && !need2 && !need3 && !need4) return;
+        const bool need5 = low.find("espera_automatico") == std::string::npos && low.find("auto_wait") == std::string::npos;
+        if (!need1 && !need2 && !need3 && !need4 && !need5) return;
         if (FILE* a = _wfopen(p.c_str(), L"ab")) {
             if (need1) std::fputs(ds5::kIniUpgradeBlock, a);
             if (need2) std::fputs(ds5::kIniUpgradeBlock2, a);
             if (need3) std::fputs(ds5::kIniUpgradeBlock3, a);
             if (need4) std::fputs(ds5::kIniUpgradeBlock4, a);
+            if (need5) std::fputs(ds5::kIniUpgradeBlock5, a);
             std::fclose(a);
         }
         return;
@@ -1125,6 +1130,8 @@ static int cmdVirtual(const Options& opt) {
     // Opciones de [general] que se usan antes de cargar los perfiles (se actualizan al recargar)
     std::atomic<bool> voiceOn{true}, restoreAudioOn{true};
     std::atomic<float> voiceVolume{2.0f};
+    std::atomic<bool> shakeOn{true}, psStatsOn{true};
+    std::string statsHotkey = "alt+f11";
     {
         ensureIni();
         std::string text;
@@ -1134,6 +1141,9 @@ static int cmdVirtual(const Options& opt) {
             voiceOn = p0.voice;
             voiceVolume = p0.voiceVolume;
             restoreAudioOn = p0.restoreAudio;
+            shakeOn = p0.shake;
+            psStatsOn = p0.psButtonStats;
+            statsHotkey = p0.statsHotkey;
         }
     }
     ds5::AudioDefaultGuard audioGuard;
@@ -1336,6 +1346,10 @@ static int cmdVirtual(const Options& opt) {
     auto haptics = std::make_unique<ds5::LivePipeline>(hcfg);
     std::vector<float> hbuf;
     ds5::VoiceQueue voiceQ;   // avisos hablados, se mezclan con el sonido del parlante
+    // Modo Xbox/PS4: háptica y parlante simulados a partir del sonido del juego
+    ds5::SimFx simFx;
+    std::atomic<bool> simActive{false}, simHapOn{true}, simSpkOn{true};
+    std::atomic<int> simSens{5};
 #ifdef DS5_WITH_OPUS
     const bool speakerOn = opt.speaker;
     ds5::SpeakerFifo speakerFifo;
@@ -1380,6 +1394,7 @@ static int cmdVirtual(const Options& opt) {
     std::atomic<int> padMode{ds5::kModePs5};
     ds5::SimplePad::Callbacks pcb;
     pcb.rumble = [&](uint8_t strong, uint8_t weak) {
+        simFx.setRumble(strong, weak);
         if (opt.noOutput) return;
         uint8_t r[ds5::kUsbOutSize];
         ds5::buildRumbleReport(r, strong, weak, rumbleV2);
@@ -1418,6 +1433,8 @@ static int cmdVirtual(const Options& opt) {
 
     // Lector del mando real por Bluetooth (se reconecta solo si el mando se va y vuelve)
     std::atomic<unsigned> inputs{0};
+    std::atomic<ds5ui::Tray*> trayPtr{nullptr};   // para que el botón PS abra las estadísticas
+    std::atomic<unsigned> shakeRequests{0};
     std::thread btThread([&] {
         SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
         std::vector<uint8_t> buf;
@@ -1425,6 +1442,8 @@ static int cmdVirtual(const Options& opt) {
         int diagLeft = 0, diagFull = 0, diagSimple = 0;
         ds5::BatteryInfo battShown, battCandidate;
         DWORD battSince = 0;
+        ds5::Gestures gestures;
+        gestures.reset(GetTickCount());
         while (!g_stop) {
             if (btLost) {
                 Sleep(1000);
@@ -1445,6 +1464,7 @@ static int cmdVirtual(const Options& opt) {
                         Sleep(300);   // dar tiempo al mando a terminar de conectarse
                         size_t replayed = replayGameState();
                         if (!replayed) modeLight();
+                        gestures.reset(GetTickCount());      // el PS con que se prendió no cuenta
                         micPulsing = false;                  // el mando arranca con el LED normal:
                         battShown = ds5::BatteryInfo();      // se vuelve a evaluar la batería
                         std::lock_guard<std::mutex> lg(logMu);
@@ -1479,6 +1499,13 @@ static int cmdVirtual(const Options& opt) {
             }
             uint8_t usb[64];
             if (ds5::btInputToUsb(buf.data(), size_t(n), usb)) {
+                // Gestos: el botón PS muestra las estadísticas (y el juego también lo recibe);
+                // agitar el mando cambia de modo (lo resuelve el hilo principal)
+                ds5::Gestures::Events ge = gestures.feed(usb, GetTickCount());
+                if (ge.psPressed && psStatsOn) {
+                    if (ds5ui::Tray* tp = trayPtr.load()) tp->toggleStats();
+                }
+                if (ge.shaken && shakeOn) ++shakeRequests;
                 switch (padMode.load()) {
                     case ds5::kModePs4: vps4.pushInput(usb); break;
                     case ds5::kModeXbox: vxbox.pushInput(usb); break;
@@ -1793,9 +1820,19 @@ static int cmdVirtual(const Options& opt) {
     DWORD lastT = GetTickCount();
     std::fflush(stdout);
 
-    // Ícono en la bandeja y cuadro de estadísticas (Alt+Insert)
+    // Ícono en la bandeja y cuadro de estadísticas (atajo de teclado o botón PS)
     ds5ui::Tray tray;
+    auto applyHotkey = [&](const std::string& text) {
+        unsigned mods = 0, vk = 0;
+        std::string label;
+        if (!ds5::parseHotkey(text, mods, vk, &label)) {
+            std::printf(tr("\natajo_estadisticas = \"%s\" no se entiende; uso Alt+F11.\n", "\nstats_hotkey = \"%s\" not understood; using Alt+F11.\n"), text.c_str());
+            ds5::parseHotkey("alt+f11", mods, vk, &label);
+        }
+        tray.setHotkey(mods, vk, label);
+    };
     if (!opt.noTray) {
+        applyHotkey(statsHotkey);
         ds5ui::Tray::Callbacks tcb;
         tcb.exit = [] { g_stop = true; };
         tcb.autostartOn = [] { return autostartIsOn(); };
@@ -1811,6 +1848,7 @@ static int cmdVirtual(const Options& opt) {
             std::fflush(stdout);
         };
         tray.start(tcb);
+        trayPtr = &tray;
     }
     // Perfiles: se recarga ds5haptics.ini si cambia y se mira el juego en primer plano
     ensureIni();
@@ -1825,7 +1863,7 @@ static int cmdVirtual(const Options& opt) {
     bool autoWatching = false;                // esperando a ver si el juego usa el DualSense
     DWORD autoSince = 0;
     int autoOverride = -1;                    // modo decidido automáticamente para el juego actual
-    const DWORD kAutoWaitMs = 20000;
+    DWORD kAutoWaitMs = 50000;                // espera_automatico (se toma del ini)
     std::map<std::string, bool> usedDualSense;   // juegos que en esta sesión usaron el DualSense
     auto applyProfile = [&](bool force) {
         std::string matched;
@@ -1838,6 +1876,13 @@ static int cmdVirtual(const Options& opt) {
         profHapticGain = v.hapticGain * (opt.gainSet ? opt.gain : 1.0f);
         bool maxChanged = profMaxVolume.exchange(v.maxSpeakerVolume) != v.maxSpeakerVolume;
         lowBatteryPct = profiles.lowBattery;
+        kAutoWaitMs = DWORD(profiles.autoWaitSec) * 1000;
+        shakeOn = profiles.shake;
+        psStatsOn = profiles.psButtonStats;
+        if (!opt.noTray && profiles.statsHotkey != statsHotkey) { statsHotkey = profiles.statsHotkey; applyHotkey(statsHotkey); }
+        simHapOn = v.simHaptics && !opt.noHaptics;
+        simSpkOn = v.simSpeaker && speakerOn;
+        simSens = v.sensitivity;
         voiceOn = profiles.voice;
         voiceVolume = profiles.voiceVolume;
         restoreAudioOn = profiles.restoreAudio;
@@ -1855,10 +1900,94 @@ static int cmdVirtual(const Options& opt) {
         if (readIni(text, iniTime)) profiles = ds5::ProfileSet::parse(text);
         applyProfile(true);
     }
+    // Captura del sonido del juego para la háptica y el parlante simulados (modo Xbox/PS4)
+    ds5::ProcessCapture procCap;
+    ds5::LoopbackCapture outCap;
+    bool simRunning = false;
+    DWORD simPid = 0, simFailedPid = 0;
+    std::string simSource;
+    std::vector<float> simHap, simSpk;
+    auto simFeed = [&](const float* f, size_t n, unsigned rate) {
+        if (!simActive) return;
+        ds5::SimFx::Config c;
+        c.haptics = simHapOn;
+        c.speaker = simSpkOn;
+        c.sensitivity = simSens;
+        c.hapticGain = profHapticGain;
+        c.speakerGain = profSpeakerGain;
+        simFx.configure(c);
+        simSpk.clear();
+        simFx.process(f, n, rate, simHap, simSpk);
+        haptics->feed(simHap.data(), n, rate);
+#ifdef DS5_WITH_OPUS
+        if (c.speaker && !simSpk.empty()) speakerFifo.push(simSpk.data(), simSpk.size() / 2);
+#endif
+    };
+    auto stopSim = [&] {
+        if (!simRunning) return;
+        simActive = false;
+        procCap.stop();
+        outCap.stop();
+        simRunning = false;
+    };
+    auto updateSim = [&] {
+        const bool want = padMode != ds5::kModePs5 && (simHapOn || simSpkOn) && currentPid != 0 && !btLost;
+        if (want && simRunning && simPid == currentPid) return;
+        stopSim();
+        if (!want || currentPid == simFailedPid) return;
+        simPid = currentPid;
+        simActive = true;
+        if (procCap.start(simPid, simFeed)) {
+            simSource = tr("solo el sonido del juego", "game sound only");
+        } else if (outCap.start(L"", -1, -1, false, simFeed, [&](const std::string& m) {
+                       std::lock_guard<std::mutex> lg(logMu);
+                       std::printf("\n%s\n", m.c_str());
+                   })) {
+            simSource = tr("todo el sonido de Windows (este Windows no permite capturar un solo programa)",
+                           "all Windows sound (this Windows can't capture a single program)");
+        } else {
+            simActive = false;
+            simFailedPid = simPid;
+            std::lock_guard<std::mutex> lg(logMu);
+            std::printf(tr("\nNo se pudo capturar el sonido del juego: sin háptica ni parlante simulados.\n",
+                           "\nCould not capture the game's sound: no simulated haptics or speaker.\n"));
+            return;
+        }
+        simRunning = true;
+        if (simSpkOn) routeSpeaker();
+        std::lock_guard<std::mutex> lg(logMu);
+        std::printf(tr("\nHáptica%s simulada a partir de %s (sensibilidad %d).\n", "\nSimulated haptics%s from %s (sensitivity %d).\n"),
+                    simSpkOn ? tr(" y parlante", " and speaker") : "", simSource.c_str(), simSens.load());
+    };
+
     bool wasImported = false;
     DWORD importedSince = 0;
     while (!g_stop) {
         Sleep(500);
+        // Agitar el mando: siguiente modo (xbox -> ps4 -> ps5 -> xbox), anotado en el perfil del juego
+        if (shakeRequests.exchange(0) && shakeOn && opt.mode < 0) {
+            const int cur = padMode;
+            const int next = cur == ds5::kModeXbox ? ds5::kModePs4 : cur == ds5::kModePs4 ? ds5::kModePs5 : ds5::kModeXbox;
+            autoOverride = next;
+            autoWatching = false;
+            std::printf(tra("\nMando agitado: paso a modo %s", "\nController shaken: switching to %s mode", "\nAgitaste el joystick: pasamos a modo %s"),
+                        ds5::padModeName(next));
+            if (!currentGame.empty()) {
+                std::string sec = (!currentProfile.empty() && currentProfile != "?") ? currentProfile : ds5::ProfileSet::baseName(currentGame);
+                if (appendIni(ds5::shakeProfileBlock(sec, next))) {
+                    std::printf(tr(" y lo anoto en el perfil [%s].\n", " and saving it in the [%s] profile.\n"), sec.c_str());
+                    std::string t2;
+                    if (readIni(t2, iniTime)) profiles = ds5::ProfileSet::parse(t2);
+                } else {
+                    std::printf(".\n");
+                }
+                std::printf(tr("Si el juego no toma el mando, reinicialo.\n", "If the game does not pick up the controller, restart it.\n"));
+            } else {
+                std::printf(".\n");
+            }
+            applyProfile(true);
+        }
+        updateSim();
         {
             // Restaurar la salida/micrófono de audio si Windows eligió al mando recién aparecido
             bool imp = server.imported();
@@ -1983,8 +2112,9 @@ static int cmdVirtual(const Options& opt) {
             st.full = batteryCharging && batteryPct >= 100;
             st.lowWarn = micPulsing;
             st.hapticState = opt.noHaptics ? "desactivada"
+                             : (pmS != ds5::kModePs5 && simRunning) ? tr("simulada", "simulated")
                              : vds.speakerStreaming() ? (hapticActive ? "activa" : tr("en silencio", "silent")) : tr("el juego no manda", "game sends none");
-            st.hapticLevel = pk;
+            st.hapticLevel = (pmS != ds5::kModePs5 && simRunning) ? simFx.level() : pk;
             st.hapticGain = profHapticGain;
             unsigned wc = writeCount.exchange(0);
             unsigned long long ws = writeUsSum.exchange(0);
@@ -1996,7 +2126,7 @@ static int cmdVirtual(const Options& opt) {
             }
             st.gaps = hapticGaps;
             st.speakerEnabled = speakerOn;
-            st.speakerStreaming = vds.speakerStreaming();
+            st.speakerStreaming = vds.speakerStreaming() || (pmS != ds5::kModePs5 && simRunning && simSpkOn);
             st.gameVolume = lastGameVolume;
             st.volumeForced = profMaxVolume;
             st.speakerGain = profSpeakerGain;
@@ -2025,9 +2155,10 @@ static int cmdVirtual(const Options& opt) {
         const char* state = server.imported() ? (conf ? "conectado" : "enumerando") : tr("esperando", "waiting");
         // Línea corta (cabe en 100 columnas) para que la consola no la parta
         if (pm != ds5::kModePs5)
-            std::printf(tr("\r %s | modo %s | BT %s %3.0fHz%s | salidas %-5u%s | vibración clásica      ", "\r %s | mode %s | BT %s %3.0fHz%s | outputs %-5u%s | classic rumble      "),
+            std::printf(tr("\r %s | modo %s | BT %s %3.0fHz%s | salidas %-5u%s | %s golpes %u      ", "\r %s | mode %s | BT %s %3.0fHz%s | outputs %-5u%s | %s hits %u      "),
                         state, ds5::padModeName(pm), btLost ? "PERDIDO" : "ok", hz, batt, outs,
-                        outErrors ? (" err " + std::to_string(outErrors.load())).c_str() : "");
+                        outErrors ? (" err " + std::to_string(outErrors.load())).c_str() : "",
+                        simRunning ? tr("háptica simulada", "simulated haptics") : tr("vibración clásica", "classic rumble"), simFx.impacts());
         else
             std::printf(tr("\r %s | BT %s %3.0fHz%s | salidas %-5u%s | háptica [%s] %-9s%s    ", "\r %s | BT %s %3.0fHz%s | outputs %-5u%s | haptics [%s] %-9s%s    "),
                         state, btLost ? "PERDIDO" : "ok", hz, batt, outs,
@@ -2037,6 +2168,10 @@ static int cmdVirtual(const Options& opt) {
     }
 
     std::printf(tr("\nCerrando el mando virtual...\n", "\nClosing the virtual controller...\n"));
+    simActive = false;
+    procCap.stop();
+    outCap.stop();
+    trayPtr = nullptr;
     tray.stop();
     server.stop();
     btThread.join();

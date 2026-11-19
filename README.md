@@ -34,12 +34,13 @@ Windows and forwards everything the game sends to the real controller over Bluet
 | 🎮 **Native haptics** | The fine vibration games send as audio reaches the controller, with minimal latency. |
 | 🎯 **Adaptive triggers** | L2/R2 resistance and effects, as the game designed them. |
 | 🔊 **Controller speaker** | The controller speaker sound, compressed and sent over Bluetooth. |
-| 🕹️ **PS4 and Xbox modes** | For games without DualSense support: the controller shows up as a DualShock 4 or an Xbox 360 controller. Detected automatically. |
+| 🕹️ **PS4 and Xbox modes** | For games without DualSense support: the controller shows up as a DualShock 4 or an Xbox 360 controller. Detected automatically, or **shake the controller** to switch. |
+| 💥 **Simulated haptics and speaker** | In PS4/Xbox mode, the game's sound becomes haptics: soft for footsteps, rain and wind, full strength for hits and explosions, which also play through the controller speaker. |
 | 📋 **Per-game profiles** | Speaker volume, haptics intensity and mode per game, applied automatically. |
 | 🔋 **Low battery warning** | At 15% or less, the mic button light pulses and the controller tells you. |
 | 🗣️ **Spoken notices** | The controller speaker says when ds5haptics is on, the mode it switched to and low battery, in your language. |
 | 🎧 **Your audio stays put** | If Windows picks the controller as your speakers or mic, ds5haptics switches back to the ones you had. |
-| 📊 **On-screen stats** | Tray icon and a translucent panel with **Alt+Insert**: battery, mode, haptics, triggers, speaker and latency. |
+| 📊 **On-screen stats** | Tray icon and a translucent panel with the **PS button** or **Alt+F11**: battery, mode, haptics, triggers, speaker and latency. |
 | 🚀 **Starts with Windows** | Runs in the background and connects by itself when you turn the controller on. |
 | 🌐 **English and Spanish** | Follows the Windows language. There's even an Argentine Spanish mode (`idioma = argento`). |
 
@@ -64,8 +65,9 @@ Windows and forwards everything the game sends to the real controller over Bluet
 
 ## Usage
 
-- **Tray icon:** left click or **Alt+Insert** shows the stats. Right click: *Show stats*,
-  *Start with Windows* and *Exit*.
+- **Stats:** press the **PS button**, **Alt+F11** (change it with `stats_hotkey`) or click the tray
+  icon. Right click on the icon: *Show stats*, *Start with Windows* and *Exit*. The game also gets
+  the PS button press (turn this off with `ps_button_stats = no`).
 - **Profiles:** `C:\ds5haptics\perfiles.bat` opens `ds5haptics.ini`:
   ```ini
   [gamename]            ; part of the game's .exe name
@@ -75,7 +77,13 @@ Windows and forwards everything the game sends to the real controller over Bluet
   Changes apply on save, no restart needed.
 - **Games without DualSense support** are detected automatically and switched to Xbox mode
   (the first time, the game may need a restart). When the game closes, PS5 mode comes back.
-  With `auto_mode = ps4` they switch to PS4 mode instead.
+  With `auto_mode = ps4` they switch to PS4 mode instead. ds5haptics waits 50 seconds before
+  deciding (`auto_wait`).
+- **Shake the controller** hard to switch mode: Xbox → PS4 → PS5. The spoken notice tells you the
+  new mode, and it's saved in that game's profile. Off with `shake = no`.
+- **Simulated haptics and speaker** (PS4/Xbox mode): `simulated_haptics`, `simulated_speaker` and
+  `sensitivity = 1` (only explosions) to `10` (almost everything), per game. They use the game's
+  own sound only on recent Windows 10 and 11; on older versions they use all PC sound.
 - **Spoken notices:** louder or softer with `voice_volume = 1` to `10` (default 2); off with `voice = no`.
 - **Log:** `C:\ds5haptics\ds5haptics.log` shows what's going on.
 
@@ -146,12 +154,13 @@ y el parlante, en PC, solo funcionan por cable. ds5haptics crea en Windows un **
 | 🎮 **Háptica nativa** | La vibración fina que el juego manda por audio llega al mando, con latencia mínima. |
 | 🎯 **Gatillos adaptativos** | Resistencia y efectos en L2 y R2, tal como los diseñó el juego. |
 | 🔊 **Parlante del mando** | El sonido del parlante del mando, comprimido y enviado por Bluetooth. |
-| 🕹️ **Modo PS4 y Xbox** | Para juegos sin soporte de DualSense: el mando se presenta como DualShock 4 o como mando de Xbox 360. Se detecta solo. |
+| 🕹️ **Modo PS4 y Xbox** | Para juegos sin soporte de DualSense: el mando se presenta como DualShock 4 o como mando de Xbox 360. Se detecta solo, o **agitá el mando** para cambiar. |
+| 💥 **Háptica y parlante simulados** | En modo PS4/Xbox, el sonido del juego se vuelve háptica: suave para pisadas, lluvia y viento, a fondo para golpes y explosiones, que además suenan por el parlante del mando. |
 | 📋 **Perfiles por juego** | Volumen del parlante, intensidad de la háptica y modo, por juego. Se aplican solos. |
 | 🔋 **Aviso de batería baja** | Con 15% o menos, la luz del botón de micrófono parpadea y el mando te lo dice. |
 | 🗣️ **Avisos hablados** | El parlante del mando avisa cuando ds5haptics se activa, el modo al que cambió y la batería baja, en tu idioma. |
 | 🎧 **Tu audio no se mueve** | Si Windows elige al mando como parlantes o micrófono, ds5haptics vuelve a poner los que tenías. |
-| 📊 **Estadísticas en pantalla** | Ícono en la bandeja y un cuadro semitransparente con **Alt+Insert**: batería, modo, háptica, gatillos, parlante y latencia. |
+| 📊 **Estadísticas en pantalla** | Ícono en la bandeja y un cuadro semitransparente con el **botón PS** o **Alt+F11**: batería, modo, háptica, gatillos, parlante y latencia. |
 | 🚀 **Arranca con Windows** | Corre en segundo plano y se conecta solo cuando prendés el mando. |
 | 🌐 **Español e inglés** | Según el idioma de Windows. Y en argento, con `idioma = argento`. |
 
@@ -176,8 +185,9 @@ y el parlante, en PC, solo funcionan por cable. ds5haptics crea en Windows un **
 
 ## Uso
 
-- **Ícono en la bandeja:** clic izquierdo o **Alt+Insert** muestra las estadísticas. Clic derecho:
-  *Ver estadísticas*, *Iniciar con Windows* y *Salir*.
+- **Estadísticas:** apretá el **botón PS**, **Alt+F11** (se cambia con `atajo_estadisticas`) o hacé
+  clic en el ícono. Clic derecho en el ícono: *Ver estadísticas*, *Iniciar con Windows* y *Salir*.
+  El juego también recibe el botón PS (se desactiva con `boton_ps_estadisticas = no`).
 - **Perfiles:** `C:\ds5haptics\perfiles.bat` abre `ds5haptics.ini`. Ejemplo:
   ```ini
   [nombredeljuego]      ; parte del nombre del .exe
@@ -187,7 +197,13 @@ y el parlante, en PC, solo funcionan por cable. ds5haptics crea en Windows un **
   Los cambios se aplican al guardar, sin reiniciar nada.
 - **Juegos sin soporte de DualSense:** el programa lo detecta solo y pasa a modo Xbox
   (la primera vez puede hacer falta reiniciar el juego). Al cerrar el juego vuelve a modo PS5.
-  Con `modo_automatico = ps4` pasan a modo PS4.
+  Con `modo_automatico = ps4` pasan a modo PS4. ds5haptics espera 50 segundos antes de decidir
+  (`espera_automatico`).
+- **Agitá el mando** con fuerza para cambiar de modo: Xbox → PS4 → PS5. El aviso hablado te dice el
+  modo nuevo, y queda anotado en el perfil del juego. Se apaga con `agitar = no`.
+- **Háptica y parlante simulados** (modo PS4/Xbox): `haptica_simulada`, `parlante_simulado` y
+  `sensibilidad = 1` (solo explosiones) a `10` (casi todo), por juego. Usan solo el sonido del
+  juego en Windows 10 reciente y 11; en versiones más viejas, todo el sonido de la PC.
 - **Avisos hablados:** más fuerte o más bajo con `volumen_voz = 1` a `10` (por defecto 2); se apagan con `voz = no`.
 - **Registro:** `C:\ds5haptics\ds5haptics.log` muestra todo lo que pasa: qué juego detectó,
   qué perfil aplicó, la batería y los errores.
