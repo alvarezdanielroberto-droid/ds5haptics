@@ -32,6 +32,7 @@ jobs:
           ./build/test_profiles
           ./build/test_pads_unit
           ./build/test_voice
+          ./build/test_v11
           if [ -x ./build/test_speaker ]; then ./build/test_speaker; fi
           python3 tests/test_usbip_client.py ./build/usbip_harness
           python3 tests/test_pads.py ./build/usbip_harness
