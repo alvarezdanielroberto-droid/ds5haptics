@@ -118,13 +118,14 @@ private:
 // Cola del audio del parlante (canales 1 y 2) entre el hilo de USB y el de envío.
 class SpeakerFifo {
 public:
-    void push(const float* stereo, size_t frames) {
+    // maxBlocks/keepBlocks: si se acumulan más de 'maxBlocks' bloques de 512 frames (~10,7 ms
+    // cada uno), se descarta lo viejo y quedan 'keepBlocks'. Por defecto ~43 ms -> ~21 ms.
+    void push(const float* stereo, size_t frames, size_t maxBlocks = 4, size_t keepBlocks = 2) {
         std::lock_guard<std::mutex> lk(mu_);
         buf_.insert(buf_.end(), stereo, stereo + frames * 2);
-        // Acotar la demora: si se acumula más de ~43 ms, descartar lo viejo
-        const size_t maxSamples = kSpeakerInFrames * 4 * 2;
+        const size_t maxSamples = kSpeakerInFrames * maxBlocks * 2;
         if (buf_.size() > maxSamples) {
-            buf_.erase(buf_.begin(), buf_.begin() + (buf_.size() - kSpeakerInFrames * 2 * 2));
+            buf_.erase(buf_.begin(), buf_.begin() + (buf_.size() - kSpeakerInFrames * keepBlocks * 2));
             ++drops_;
         }
     }

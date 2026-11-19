@@ -1920,7 +1920,8 @@ static int cmdVirtual(const Options& opt) {
         simFx.process(f, n, rate, simHap, simSpk);
         haptics->feed(simHap.data(), n, rate);
 #ifdef DS5_WITH_OPUS
-        if (c.speaker && !simSpk.empty()) speakerFifo.push(simSpk.data(), simSpk.size() / 2);
+        // Menos margen que con un juego de DualSense: lo que importa acá es llegar rápido
+        if (c.speaker && !simSpk.empty()) speakerFifo.push(simSpk.data(), simSpk.size() / 2, 2, 1);
 #endif
     };
     auto stopSim = [&] {
@@ -1956,8 +1957,8 @@ static int cmdVirtual(const Options& opt) {
         simRunning = true;
         if (simSpkOn) routeSpeaker();
         std::lock_guard<std::mutex> lg(logMu);
-        std::printf(tr("\nHáptica%s simulada a partir de %s (sensibilidad %d).\n", "\nSimulated haptics%s from %s (sensitivity %d).\n"),
-                    simSpkOn ? tr(" y parlante", " and speaker") : "", simSource.c_str(), simSens.load());
+        std::printf(tr("\nHáptica simulada%s a partir de %s (sensibilidad %d).\n", "\nSimulated haptics%s from %s (sensitivity %d).\n"),
+                    simSpkOn ? tr(", y los sonidos agudos por el parlante,", ", plus high-pitched sounds on the speaker,") : "", simSource.c_str(), simSens.load());
     };
 
     bool wasImported = false;
@@ -2155,10 +2156,10 @@ static int cmdVirtual(const Options& opt) {
         const char* state = server.imported() ? (conf ? "conectado" : "enumerando") : tr("esperando", "waiting");
         // Línea corta (cabe en 100 columnas) para que la consola no la parta
         if (pm != ds5::kModePs5)
-            std::printf(tr("\r %s | modo %s | BT %s %3.0fHz%s | salidas %-5u%s | %s golpes %u      ", "\r %s | mode %s | BT %s %3.0fHz%s | outputs %-5u%s | %s hits %u      "),
+            std::printf(tr("\r %s | modo %s | BT %s %3.0fHz%s | salidas %-5u%s | %s golpes %u parlante %u      ", "\r %s | mode %s | BT %s %3.0fHz%s | outputs %-5u%s | %s hits %u speaker %u      "),
                         state, ds5::padModeName(pm), btLost ? "PERDIDO" : "ok", hz, batt, outs,
                         outErrors ? (" err " + std::to_string(outErrors.load())).c_str() : "",
-                        simRunning ? tr("háptica simulada", "simulated haptics") : tr("vibración clásica", "classic rumble"), simFx.impacts());
+                        simRunning ? tr("háptica simulada", "simulated haptics") : tr("vibración clásica", "classic rumble"), simFx.impacts(), simFx.speakerHits());
         else
             std::printf(tr("\r %s | BT %s %3.0fHz%s | salidas %-5u%s | háptica [%s] %-9s%s    ", "\r %s | BT %s %3.0fHz%s | outputs %-5u%s | haptics [%s] %-9s%s    "),
                         state, btLost ? "PERDIDO" : "ok", hz, batt, outs,

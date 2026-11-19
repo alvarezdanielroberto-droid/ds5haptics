@@ -121,7 +121,8 @@ private:
             f.nBlockAlign = 4;
             f.nAvgBytesPerSec = 48000 * 4;
             const DWORD flags = AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK | 0x80000000u;   // AUTOCONVERTPCM
-            ok = SUCCEEDED(client->Initialize(AUDCLNT_SHAREMODE_SHARED, flags, 200000, 0, &f, nullptr)) &&
+            // Búfer de 10 ms (lo mínimo habitual en modo compartido): menos atraso
+            ok = SUCCEEDED(client->Initialize(AUDCLNT_SHAREMODE_SHARED, flags, 100000, 0, &f, nullptr)) &&
                  SUCCEEDED(client->SetEventHandle(ev)) &&
                  SUCCEEDED(client->GetService(pcap::kIidCaptureClient, reinterpret_cast<void**>(&cap))) && cap &&
                  SUCCEEDED(client->Start());
