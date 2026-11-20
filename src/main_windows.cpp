@@ -65,6 +65,8 @@ extern "C" {
 #include "gestures.h"
 #include "sim_fx.h"
 #include "process_capture.h"
+#include "dsx_protocol.h"
+#include "dsx_udp.h"
 
 using ds5::tr;
 using ds5::tra;
@@ -1130,8 +1132,8 @@ static int cmdVirtual(const Options& opt) {
     // Opciones de [general] que se usan antes de cargar los perfiles (se actualizan al recargar)
     std::atomic<bool> voiceOn{true}, restoreAudioOn{true};
     std::atomic<float> voiceVolume{2.0f};
-    std::atomic<bool> shakeOn{true}, psStatsOn{true};
-    std::string statsHotkey = "alt+f11";
+    std::atomic<bool> shakeOn{true}, micStatsOn{true}, dsxOn{true};
+    std::string statsHotkey;
     {
         ensureIni();
         std::string text;
@@ -1142,8 +1144,9 @@ static int cmdVirtual(const Options& opt) {
             voiceVolume = p0.voiceVolume;
             restoreAudioOn = p0.restoreAudio;
             shakeOn = p0.shake;
-            psStatsOn = p0.psButtonStats;
+            micStatsOn = p0.micButtonStats;
             statsHotkey = p0.statsHotkey;
+            dsxOn = p0.dsxMods;
         }
     }
     ds5::AudioDefaultGuard audioGuard;
@@ -1428,6 +1431,51 @@ static int cmdVirtual(const Options& opt) {
         else setLightbar(dev, opt, 0x00, 0x30, 0xFF);
     };
 
+    // Mods hechos para DSX (experimental): mandan por UDP los gatillos y el color de la luz.
+    // Van directo al mando real, así que andan en cualquier modo (también xbox y ps4).
+    std::atomic<unsigned> dsxPackets{0}, dsxBad{0};
+    std::atomic<DWORD> dsxLastMs{0};
+    std::atomic<bool> dsxTouched{false};   // un mod cambió los gatillos (hay que soltarlos al cerrar el juego)
+    ds5::DsxUdp dsxUdp;
+    auto dsxHandle = [&](const char* d, size_t n) -> std::string {
+        std::vector<ds5::dsx::Instruction> ins;
+        if (!ds5::dsx::Json::parse(d, n, ins)) {
+            if (dsxBad++ == 0) {
+                std::lock_guard<std::mutex> lk(logMu);
+                std::printf(tr("\n[mods] Llegó un mensaje por UDP que no se entiende: %.80s\n", "\n[mods] Got a UDP message that could not be understood: %.80s\n"),
+                            std::string(d, std::min<size_t>(n, 80)).c_str());
+            }
+            return {};
+        }
+        if (!dsxOn) return {};
+        ds5::dsx::Result r = ds5::dsx::toReports(ins);
+        for (auto& o : r.reports) cb.output(o.data(), o.size());   // queda guardado: vuelve si el mando se reconecta
+        if (r.triggers) dsxTouched = true;
+        dsxLastMs = GetTickCount();
+        if (dsxPackets++ == 0) {
+            std::lock_guard<std::mutex> lk(logMu);
+            std::printf(tr("\n[mods] Un mod para DSX se conectó (UDP 6969): %u gatillo(s), %u luz/luces.\n",
+                           "\n[mods] A DSX mod connected (UDP 6969): %u trigger(s), %u light(s).\n"), r.triggers, r.lights);
+        }
+        return ds5::dsx::serverResponse(batteryPct, !btLost);
+    };
+    auto dsxRelease = [&] {   // gatillos sin efecto (los que dejó un mod)
+        if (!dsxTouched.exchange(false) || opt.noOutput) return;
+        auto r = ds5::dsx::toReports({ds5::dsx::Instruction{7, {}}});
+        for (auto& o : r.reports) forwardOutput(o.data(), o.size());
+    };
+    auto applyDsx = [&](bool on) {
+        if (on && !dsxUdp.running()) {
+            if (!dsxUdp.start(6969, dsxHandle))
+                std::printf(tr("\n[mods] No se pudo abrir el puerto UDP 6969 (¿está abierto DSX?). Los mods para DSX no van a andar con ds5haptics.\n",
+                               "\n[mods] Could not open UDP port 6969 (is DSX running?). DSX mods won't work with ds5haptics.\n"));
+        } else if (!on && dsxUdp.running()) {
+            dsxUdp.stop();
+            dsxRelease();
+        }
+    };
+    applyDsx(dsxOn);
+
     usbip::Server server;
     if (!server.start(vds, 3240, [](const std::string& m) { std::printf("\n%s\n", m.c_str()); })) {
         std::printf(tr("No se pudo abrir el puerto 3240 en 127.0.0.1 (¿otro programa USB/IP lo está usando?).\n", "Could not open port 3240 on 127.0.0.1 (is another USB/IP program using it?).\n"));
@@ -1437,7 +1485,7 @@ static int cmdVirtual(const Options& opt) {
 
     // Lector del mando real por Bluetooth (se reconecta solo si el mando se va y vuelve)
     std::atomic<unsigned> inputs{0};
-    std::atomic<ds5ui::Tray*> trayPtr{nullptr};   // para que el botón PS abra las estadísticas
+    std::atomic<ds5ui::Tray*> trayPtr{nullptr};   // para que el botón de micrófono abra las estadísticas
     std::atomic<unsigned> shakeRequests{0};
     std::thread btThread([&] {
         SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
@@ -1503,10 +1551,10 @@ static int cmdVirtual(const Options& opt) {
             }
             uint8_t usb[64];
             if (ds5::btInputToUsb(buf.data(), size_t(n), usb)) {
-                // Gestos: el botón PS muestra las estadísticas (y el juego también lo recibe);
+                // Gestos: el botón de micrófono muestra las estadísticas (el juego también lo recibe);
                 // agitar el mando cambia de modo (lo resuelve el hilo principal)
                 ds5::Gestures::Events ge = gestures.feed(usb, GetTickCount());
-                if (ge.psPressed && psStatsOn) {
+                if (ge.micPressed && micStatsOn) {
                     if (ds5ui::Tray* tp = trayPtr.load()) tp->toggleStats();
                 }
                 if (ge.shaken && shakeOn) ++shakeRequests;
@@ -1774,6 +1822,7 @@ static int cmdVirtual(const Options& opt) {
         std::printf(tr("\nCambiando el mando virtual a modo %s...\n", "\nSwitching the virtual controller to %s mode...\n"), describeMode(m));
         std::fflush(stdout);
         { std::lock_guard<std::mutex> lk(histMu); outByKind.clear(); }
+        dsxRelease();   // los gatillos de un mod no quedan puestos en el modo nuevo
         if (!opt.noOutput) {
             uint8_t r[ds5::kUsbOutSize];
             ds5::buildRumbleReport(r, 0, 0, rumbleV2);       // cortar cualquier vibración en curso
@@ -1834,14 +1883,15 @@ static int cmdVirtual(const Options& opt) {
     DWORD lastT = GetTickCount();
     std::fflush(stdout);
 
-    // Ícono en la bandeja y cuadro de estadísticas (atajo de teclado o botón PS)
+    // Ícono en la bandeja y cuadro de estadísticas (botón de micrófono o atajo de teclado)
     ds5ui::Tray tray;
     auto applyHotkey = [&](const std::string& text) {
         unsigned mods = 0, vk = 0;
         std::string label;
-        if (!ds5::parseHotkey(text, mods, vk, &label)) {
-            std::printf(tr("\natajo_estadisticas = \"%s\" no se entiende; uso Alt+F11.\n", "\nstats_hotkey = \"%s\" not understood; using Alt+F11.\n"), text.c_str());
-            ds5::parseHotkey("alt+f11", mods, vk, &label);
+        if (!ds5::ProfileSet::trim(text).empty() && !ds5::parseHotkey(text, mods, vk, &label)) {
+            std::printf(tr("\natajo_estadisticas = \"%s\" no se entiende; sin atajo de teclado.\n", "\nstats_hotkey = \"%s\" not understood; no keyboard shortcut.\n"), text.c_str());
+            mods = vk = 0;
+            label.clear();
         }
         tray.setHotkey(mods, vk, label);
     };
@@ -1892,7 +1942,8 @@ static int cmdVirtual(const Options& opt) {
         lowBatteryPct = profiles.lowBattery;
         kAutoWaitMs = DWORD(profiles.autoWaitSec) * 1000;
         shakeOn = profiles.shake;
-        psStatsOn = profiles.psButtonStats;
+        micStatsOn = profiles.micButtonStats;
+        if (dsxOn.exchange(profiles.dsxMods) != profiles.dsxMods) applyDsx(profiles.dsxMods);
         if (!opt.noTray && profiles.statsHotkey != statsHotkey) { statsHotkey = profiles.statsHotkey; applyHotkey(statsHotkey); }
         simHapOn = v.simHaptics && !opt.noHaptics;
         simSpkOn = v.simSpeaker && speakerOn;
@@ -2149,6 +2200,7 @@ static int cmdVirtual(const Options& opt) {
             st.speakerGain = profSpeakerGain;
             st.trigR = trigR;
             st.trigL = trigL;
+            st.dsxMod = dsxPackets > 0 && GetTickCount() - dsxLastMs < 30000;
             st.gameOutputs = vds.outputs();
             tray.update(st);
         }

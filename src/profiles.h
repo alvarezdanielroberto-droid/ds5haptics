@@ -74,12 +74,13 @@ struct ProfileSet {
     bool restoreAudio = true;   // si Windows elige al mando como salida/entrada de audio, volver a la anterior
     int autoWaitSec = 50;       // segundos que se espera antes del cambio automático de modo
     bool shake = true;          // agitar el mando cambia de modo
-    bool psButtonStats = true;  // el botón PS muestra u oculta las estadísticas
+    bool micButtonStats = true; // el botón de micrófono muestra u oculta las estadísticas
+    bool dsxMods = true;        // experimental: recibir los mods hechos para DSX (UDP 6969)
     // Háptica simulada con paquetes 0x32 (solo háptica). Probado: si antes el mando recibió
     // paquetes 0x36 (con audio, por ejemplo un aviso hablado), deja de hacer caso a los 0x32
     // a los pocos segundos. Por eso queda apagado: experimental.
     bool fastHaptics = false;
-    std::string statsHotkey = "alt+f11";
+    std::string statsHotkey;    // atajo de teclado (vacío = ninguno)
 
     // Nombre del programa sin carpeta ni ".exe", en minúsculas ("BatmanAK.exe" -> "batmanak")
     static std::string baseName(const std::string& exeName) {
@@ -206,8 +207,11 @@ struct ProfileSet {
                 if (inGeneral) ps.fastHaptics = parseBool(val);
             } else if (key == "agitar" || key == "shake") {
                 if (inGeneral) ps.shake = parseBool(val);
-            } else if (key == "boton_ps_estadisticas" || key == "botón_ps_estadisticas" || key == "ps_button_stats") {
-                if (inGeneral) ps.psButtonStats = parseBool(val);
+            } else if (key == "boton_microfono_estadisticas" || key == "botón_micrófono_estadisticas" || key == "mic_button_stats" ||
+                       key == "boton_ps_estadisticas" || key == "ps_button_stats") {   // nombres de las pruebas de la v1.1
+                if (inGeneral) ps.micButtonStats = parseBool(val);
+            } else if (key == "mods_dsx" || key == "dsx_mods") {
+                if (inGeneral) ps.dsxMods = parseBool(val);
             } else if (key == "atajo_estadisticas" || key == "atajo_estadísticas" || key == "stats_hotkey") {
                 if (inGeneral) ps.statsHotkey = lower(trim(val));
             } else if (key == "idioma" || key == "language") {
@@ -286,8 +290,10 @@ static const char* const kDefaultIniEs =
     "# espera_automatico = segundos que espera antes de ese cambio (por defecto 50).\r\n"
     "# agitar = si/no: agitar fuerte el mando cambia de modo (xbox -> ps4 -> ps5) y lo anota\r\n"
     "#        en el perfil del juego. Solo en [general].\r\n"
-    "# boton_ps_estadisticas = si/no: el boton PS muestra u oculta las estadisticas.\r\n"
-    "# atajo_estadisticas = atajo de teclado de las estadisticas (ej. alt+f11, ctrl+alt+d).\r\n"
+    "# boton_microfono_estadisticas = si/no: el boton de microfono muestra u oculta las estadisticas.\r\n"
+    "# atajo_estadisticas = atajo de teclado para las estadisticas (ej. ctrl+alt+d; vacio = ninguno).\r\n"
+    "# mods_dsx = si/no (experimental): recibe los mods hechos para DSX (gatillos y luces que\r\n"
+    "#        manda el mod por UDP 127.0.0.1:6969). No uses DSX a la vez. Solo en [general].\r\n"
     "# modo_automatico = xbox / ps4: a que modo pasan esos juegos (ps4 = iconos de PlayStation\r\n"
     "#        en los juegos que admiten el mando de PS4). Solo en [general].\r\n"
     "# voz = si/no: avisos hablados por el parlante del mando (modo, bateria baja).\r\n"
@@ -313,8 +319,9 @@ static const char* const kDefaultIniEs =
     "sensibilidad = 5\r\n"
     "espera_automatico = 50\r\n"
     "agitar = si\r\n"
-    "boton_ps_estadisticas = si\r\n"
-    "atajo_estadisticas = alt+f11\r\n"
+    "boton_microfono_estadisticas = si\r\n"
+    "atajo_estadisticas =\r\n"
+    "mods_dsx = si\r\n"
     "idioma = auto\r\n"
     "\r\n"
     "# Un perfil por juego: entre corchetes, parte del nombre del .exe del juego.\r\n"
@@ -350,8 +357,10 @@ static const char* const kDefaultIniEn =
     "# auto_wait = seconds to wait before that switch (default 50).\r\n"
     "# shake = yes/no: shaking the controller hard switches mode (xbox -> ps4 -> ps5) and\r\n"
     "#        saves it in the game's profile. Only in [general].\r\n"
-    "# ps_button_stats = yes/no: the PS button shows or hides the stats.\r\n"
-    "# stats_hotkey = keyboard shortcut for the stats (e.g. alt+f11, ctrl+alt+d).\r\n"
+    "# mic_button_stats = yes/no: the mic button shows or hides the stats.\r\n"
+    "# stats_hotkey = keyboard shortcut for the stats (e.g. ctrl+alt+d; empty = none).\r\n"
+    "# dsx_mods = yes/no (experimental): accept mods made for DSX (the triggers and lights the\r\n"
+    "#        mod sends over UDP 127.0.0.1:6969). Don't run DSX at the same time. Only in [general].\r\n"
     "# auto_mode = xbox / ps4: which mode those games switch to (ps4 = PlayStation icons in\r\n"
     "#        games that support the PS4 controller). Only in [general].\r\n"
     "# voice = yes/no: spoken notices through the controller speaker (mode, low battery).\r\n"
@@ -377,8 +386,9 @@ static const char* const kDefaultIniEn =
     "sensitivity = 5\r\n"
     "auto_wait = 50\r\n"
     "shake = yes\r\n"
-    "ps_button_stats = yes\r\n"
-    "stats_hotkey = alt+f11\r\n"
+    "mic_button_stats = yes\r\n"
+    "stats_hotkey =\r\n"
+    "dsx_mods = yes\r\n"
     "language = auto\r\n"
     "\r\n"
     "# One profile per game: in brackets, part of the game's .exe name.\r\n"
@@ -441,7 +451,7 @@ static const char* const kIniUpgradeBlock4 =
     "restaurar_audio = si\r\n"
     "modo_automatico = xbox\r\n";
 
-// Quinta actualización (v1.1): háptica/parlante simulados, agitar, botón PS, espera y atajo
+// Quinta actualización (v1.1): háptica/parlante simulados, agitar, botón de micrófono, espera
 static const char* const kIniUpgradeBlock5 =
     "\r\n"
     "# --- Opciones nuevas / New options (v1.1) ---\r\n"
@@ -451,18 +461,20 @@ static const char* const kIniUpgradeBlock5 =
     "# sensibilidad = 1 a 10: cuanto tiene que sonar algo para contar como golpe (1 = solo explosiones).\r\n"
     "# espera_automatico = segundos antes del cambio automatico a xbox/ps4 (antes eran 20).\r\n"
     "# agitar = si/no: agitar fuerte el mando cambia de modo y lo anota en el perfil del juego.\r\n"
-    "# boton_ps_estadisticas = si/no: el boton PS muestra u oculta las estadisticas.\r\n"
-    "# atajo_estadisticas = atajo de teclado de las estadisticas (antes Alt+Insert).\r\n"
+    "# boton_microfono_estadisticas = si/no: el boton de microfono muestra u oculta las estadisticas.\r\n"
+    "# atajo_estadisticas = atajo de teclado (antes Alt+Insert; ahora ninguno por defecto).\r\n"
+    "# mods_dsx = si/no (experimental): recibe los mods hechos para DSX (UDP 127.0.0.1:6969).\r\n"
     "# English: simulated_haptics / simulated_speaker / sensitivity / auto_wait / shake /\r\n"
-    "#          ps_button_stats / stats_hotkey.\r\n"
+    "#          mic_button_stats / stats_hotkey / dsx_mods.\r\n"
     "[general]\r\n"
     "haptica_simulada = si\r\n"
     "parlante_simulado = no\r\n"
     "sensibilidad = 5\r\n"
     "espera_automatico = 50\r\n"
     "agitar = si\r\n"
-    "boton_ps_estadisticas = si\r\n"
-    "atajo_estadisticas = alt+f11\r\n";
+    "boton_microfono_estadisticas = si\r\n"
+    "atajo_estadisticas =\r\n"
+    "mods_dsx = si\r\n";
 
 // Modo elegido agitando el mando: se anota en el perfil del juego. 'section' es el nombre
 // del perfil que ya coincide con el juego (si hay) o el del .exe; la sección repetida se

@@ -36,11 +36,12 @@ Windows and forwards everything the game sends to the real controller over Bluet
 | 🔊 **Controller speaker** | The controller speaker sound, compressed and sent over Bluetooth. |
 | 🕹️ **PS4 and Xbox modes** | For games without DualSense support: the controller shows up as a DualShock 4 or an Xbox 360 controller. Detected automatically, or **shake the controller** to switch. |
 | 💥 **Simulated haptics** | In PS4/Xbox mode, the game's sound becomes haptics, on top of the classic rumble: soft for footsteps, rain and wind, full strength for hits and explosions. |
+| 🧪 **DSX mods (experimental)** | Mods made for DSX (adaptive triggers and light bar for games like RDR2) work with ds5haptics too, with no DSX. They even work in PS4/Xbox mode. |
 | 📋 **Per-game profiles** | Speaker volume, haptics intensity and mode per game, applied automatically. |
 | 🔋 **Low battery warning** | At 15% or less, the mic button light pulses and the controller tells you. |
 | 🗣️ **Spoken notices** | The controller speaker says when ds5haptics is on, the mode it switched to and low battery, in your language. |
 | 🎧 **Your audio stays put** | If Windows picks the controller as your speakers or mic, ds5haptics switches back to the ones you had. |
-| 📊 **On-screen stats** | Tray icon and a translucent panel with the **PS button** or **Alt+F11**: battery, mode, haptics, triggers, speaker and latency. |
+| 📊 **On-screen stats** | Tray icon and a translucent panel with the **mic button**: battery, mode, haptics, triggers, speaker and latency. |
 | 🚀 **Starts with Windows** | Runs in the background and connects by itself when you turn the controller on. |
 | 🌐 **English and Spanish** | Follows the Windows language. There's even an Argentine Spanish mode (`idioma = argento`). |
 
@@ -65,9 +66,10 @@ Windows and forwards everything the game sends to the real controller over Bluet
 
 ## Usage
 
-- **Stats:** press the **PS button**, **Alt+F11** (change it with `stats_hotkey`) or click the tray
-  icon. Right click on the icon: *Show stats*, *Start with Windows* and *Exit*. The game also gets
-  the PS button press (turn this off with `ps_button_stats = no`).
+- **Stats:** press the controller's **mic button** or click the tray icon (you can also set a
+  keyboard shortcut with `stats_hotkey`, e.g. `ctrl+alt+d`). Right click on the icon: *Show stats*,
+  *Start with Windows* and *Exit*. The PS button stays free for the game. Turn the mic button off
+  with `mic_button_stats = no`.
 - **Profiles:** `C:\ds5haptics\perfiles.bat` opens `ds5haptics.ini`:
   ```ini
   [gamename]            ; part of the game's .exe name
@@ -100,6 +102,11 @@ Windows and forwards everything the game sends to the real controller over Bluet
 - **Microphone:** the controller mic doesn't work over Bluetooth. In Discord and other apps, pick
   your own mic.
 - **Several controllers:** for now ds5haptics uses one DualSense.
+- **DSX mods (experimental):** some games have community mods that send trigger effects and light
+  bar colors to DSX over UDP (127.0.0.1:6969). ds5haptics listens on that port, so those mods work
+  without DSX, in any mode. Install the mod as its instructions say and keep ds5haptics running.
+  Don't run DSX at the same time. Turn it off with `dsx_mods = no`. Not every game has a mod, and
+  not all of them are tested yet: please report what works in *Issues*.
 - **No PC sound?** Windows may have picked the controller as the audio output. ds5haptics switches
   it back by itself (`restore_audio = yes`); if not, choose your speakers in the sound settings.
 - **PlayStation button icons:** PS4 mode only shows them in games that support the DualShock 4
@@ -157,11 +164,12 @@ y el parlante, en PC, solo funcionan por cable. ds5haptics crea en Windows un **
 | 🔊 **Parlante del mando** | El sonido del parlante del mando, comprimido y enviado por Bluetooth. |
 | 🕹️ **Modo PS4 y Xbox** | Para juegos sin soporte de DualSense: el mando se presenta como DualShock 4 o como mando de Xbox 360. Se detecta solo, o **agitá el mando** para cambiar. |
 | 💥 **Háptica simulada** | En modo PS4/Xbox, el sonido del juego se vuelve háptica, además de la vibración clásica: suave para pisadas, lluvia y viento, a fondo para golpes y explosiones. |
+| 🧪 **Mods de DSX (experimental)** | Los mods hechos para DSX (gatillos adaptativos y luces en juegos como RDR2) andan también con ds5haptics, sin DSX. Incluso en modo PS4/Xbox. |
 | 📋 **Perfiles por juego** | Volumen del parlante, intensidad de la háptica y modo, por juego. Se aplican solos. |
 | 🔋 **Aviso de batería baja** | Con 15% o menos, la luz del botón de micrófono parpadea y el mando te lo dice. |
 | 🗣️ **Avisos hablados** | El parlante del mando avisa cuando ds5haptics se activa, el modo al que cambió y la batería baja, en tu idioma. |
 | 🎧 **Tu audio no se mueve** | Si Windows elige al mando como parlantes o micrófono, ds5haptics vuelve a poner los que tenías. |
-| 📊 **Estadísticas en pantalla** | Ícono en la bandeja y un cuadro semitransparente con el **botón PS** o **Alt+F11**: batería, modo, háptica, gatillos, parlante y latencia. |
+| 📊 **Estadísticas en pantalla** | Ícono en la bandeja y un cuadro semitransparente con el **botón de micrófono**: batería, modo, háptica, gatillos, parlante y latencia. |
 | 🚀 **Arranca con Windows** | Corre en segundo plano y se conecta solo cuando prendés el mando. |
 | 🌐 **Español e inglés** | Según el idioma de Windows. Y en argento, con `idioma = argento`. |
 
@@ -186,9 +194,10 @@ y el parlante, en PC, solo funcionan por cable. ds5haptics crea en Windows un **
 
 ## Uso
 
-- **Estadísticas:** apretá el **botón PS**, **Alt+F11** (se cambia con `atajo_estadisticas`) o hacé
-  clic en el ícono. Clic derecho en el ícono: *Ver estadísticas*, *Iniciar con Windows* y *Salir*.
-  El juego también recibe el botón PS (se desactiva con `boton_ps_estadisticas = no`).
+- **Estadísticas:** apretá el **botón de micrófono** del mando o hacé clic en el ícono (también
+  podés poner un atajo de teclado con `atajo_estadisticas`, ej. `ctrl+alt+d`). Clic derecho en el
+  ícono: *Ver estadísticas*, *Iniciar con Windows* y *Salir*. El botón PS queda libre para el juego.
+  El botón de micrófono se desactiva con `boton_microfono_estadisticas = no`.
 - **Perfiles:** `C:\ds5haptics\perfiles.bat` abre `ds5haptics.ini`. Ejemplo:
   ```ini
   [nombredeljuego]      ; parte del nombre del .exe
@@ -268,6 +277,16 @@ Por ahora ds5haptics usa un solo DualSense.
 
 Windows eligió al mando como salida de audio. ds5haptics lo vuelve a cambiar solo
 (`restaurar_audio = si`); si no, elegí tus parlantes en la configuración de sonido.
+</details>
+
+<details>
+<summary><b>¿Andan los mods hechos para DSX?</b></summary>
+
+Sí, en forma experimental. Algunos juegos tienen mods de la comunidad que mandan efectos de gatillo
+y colores de la luz a DSX por UDP (127.0.0.1:6969). ds5haptics escucha en ese puerto, así que esos
+mods andan sin DSX y en cualquier modo. Instalá el mod como dicen sus instrucciones y dejá
+ds5haptics abierto. No uses DSX a la vez. Se desactiva con `mods_dsx = no`. No todos los juegos
+tienen mod y todavía no están todos probados: contá en *Issues* cuáles te anduvieron.
 </details>
 
 <details>

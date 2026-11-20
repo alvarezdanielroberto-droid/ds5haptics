@@ -23,14 +23,14 @@ ds5haptics stop               detiene el que corre sin ventana
 En segundo plano espera a que prendas el mando (botón PS) y se conecta solo. Lo que
 normalmente muestra la consola queda en `ds5haptics.log`, junto al programa.
 
-### Ícono en la bandeja y estadísticas (botón PS o Alt+F11)
+### Ícono en la bandeja y estadísticas (botón de micrófono)
 
 Mientras ds5haptics corre aparece un ícono con forma de mando junto al reloj
 (Windows 11 lo puede dejar dentro de la flechita `^`: arrastralo a la barra o activalo en
 Configuración > Personalización > Barra de tareas > Otros iconos de la bandeja del sistema).
 
 - **Pasar el mouse por encima:** modo y batería.
-- **Clic izquierdo, botón PS o Alt+F11:** muestra u oculta el cuadro de estadísticas arriba a la derecha.
+- **Clic izquierdo o botón de micrófono** (o el atajo de `atajo_estadisticas`, si pusiste uno)**:** muestra u oculta el cuadro de estadísticas arriba a la derecha.
   Es semitransparente, deja pasar los clics al juego y no le quita el foco. Muestra batería
   (dibujo y porcentaje), juego y perfil, conexión Bluetooth, háptica con su nivel, gatillos,
   parlante con el volumen que pide el juego, y la latencia que agrega ds5haptics.
@@ -102,6 +102,27 @@ Cuando al mando le queda 15% o menos y no está cargando, **la luz del botón de
 pulsando**. Vuelve a la normalidad al enchufarlo. El umbral se cambia con `bateria_baja = 15`
 en `[general]` (`0` lo desactiva). El mando informa la batería en pasos de 10%.
 `ds5haptics battery` muestra el nivel actual, y cada cambio queda anotado en `ds5haptics.log`.
+
+### Mods hechos para DSX (experimental)
+
+Algunos mods de la comunidad (por ejemplo, uno para RDR2) mandan a DSX por UDP, a
+`127.0.0.1:6969`, mensajes JSON como este:
+
+```json
+{"instructions":[{"type":1,"parameters":[0,2,16,2,6,8]},{"type":2,"parameters":[0,255,0,0]}]}
+```
+
+`type 1` es un gatillo (`[mando, 1 = L2 / 2 = R2, modo, parámetros...]`), `type 2` el color de la
+barra de luz (`[mando, R, G, B]`) y `type 7` vuelve todo a lo normal. ds5haptics escucha en ese
+puerto (solo desde la misma PC), traduce cada modo de DSX al efecto equivalente del DualSense
+(resistencia, arco, arma, vibración, galope, máquina) y lo manda directo al mando real, así que
+anda en cualquier modo, incluso xbox y ps4. Responde como DSX, por si el mod lo espera.
+
+- Se desactiva con `mods_dsx = no` en `[general]`.
+- Si DSX está abierto, el puerto queda ocupado: ds5haptics lo avisa y sigue sin esta función.
+- Al cambiar de modo o cerrar el juego, los gatillos que dejó un mod vuelven a la normalidad.
+- El cuadro de estadísticas muestra "mod DSX" en la fila de gatillos mientras llegan mensajes.
+- Los otros tipos de mensaje (LED de jugador, umbral de gatillo, LED del micrófono) se ignoran.
 
 ### Armar el respaldo (una vez, con internet)
 

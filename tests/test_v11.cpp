@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Pruebas de la v1.1: gestos (botón PS, agitar), háptica/parlante simulados, atajo y perfiles.
+// Pruebas de la v1.1: gestos (botón de micrófono, agitar), háptica/parlante simulados, atajo y perfiles.
 #include "gestures.h"
 #include "profiles.h"
 #include "sim_fx.h"
@@ -18,27 +18,29 @@ static void setAccel(uint8_t* u, float gx, float gy, float gz) {
 }
 
 int main() {
-    // ---------------- botón PS ----------------
+    // ---------------- botón de micrófono ----------------
     {
         ds5::Gestures g;
         uint8_t u[64] = {};
         setAccel(u, 0, 0, 1);
         g.reset(0);
-        u[10] = 0x01;   // PS apretado al prender el mando: no cuenta
-        CHECK(!g.feed(u, 10).psPressed, "PS del encendido ignorado");
+        u[10] = 0x01;   // el botón PS (con el que se prende) no cuenta
+        CHECK(!g.feed(u, 10).micPressed, "PS no abre las estadísticas");
+        u[10] = 0x04;
+        CHECK(!g.feed(u, 12).micPressed, "botón al conectar ignorado");
         u[10] = 0;
         g.feed(u, 100);
-        u[10] = 0x01;
-        CHECK(!g.feed(u, 900).psPressed, "PS durante los primeros 1,5 s ignorado");
+        u[10] = 0x04;
+        CHECK(!g.feed(u, 900).micPressed, "durante los primeros 1,5 s ignorado");
         u[10] = 0;
         g.feed(u, 1600);
-        u[10] = 0x01;
-        CHECK(g.feed(u, 2000).psPressed, "toque de PS detectado");
-        CHECK(!g.feed(u, 2004).psPressed, "mantenerlo no repite");
+        u[10] = 0x04;
+        CHECK(g.feed(u, 2000).micPressed, "toque del botón de micrófono detectado");
+        CHECK(!g.feed(u, 2004).micPressed, "mantenerlo no repite");
         u[10] = 0;
         g.feed(u, 2100);
-        u[10] = 0x01;
-        CHECK(g.feed(u, 2200).psPressed, "segundo toque");
+        u[10] = 0x05;   // con PS apretado a la vez también cuenta
+        CHECK(g.feed(u, 2200).micPressed, "segundo toque");
     }
     // ---------------- agitar ----------------
     {
@@ -206,13 +208,13 @@ int main() {
     // ---------------- perfiles ----------------
     {
         auto d = ds5::ProfileSet::parse(ds5::kDefaultIniEs);
-        CHECK(d.autoWaitSec == 50 && d.shake && d.psButtonStats && d.statsHotkey == "alt+f11", "valores nuevos por defecto (es)");
+        CHECK(d.autoWaitSec == 50 && d.shake && d.micButtonStats && d.statsHotkey.empty(), "valores nuevos por defecto (es): sin atajo");
         CHECK(d.general.simHaptics && !d.general.simSpeaker && d.general.sensitivity == 5 && !d.fastHaptics, "simulados por defecto (es): parlante apagado");
         auto e = ds5::ProfileSet::parse(ds5::kDefaultIniEn);
-        CHECK(e.autoWaitSec == 50 && e.shake && e.general.simHaptics && e.statsHotkey == "alt+f11", "valores nuevos por defecto (en)");
-        auto p = ds5::ProfileSet::parse("[general]\nespera_automatico = 90\nagitar = no\nboton_ps_estadisticas = no\natajo_estadisticas = Ctrl+Alt+D\n"
+        CHECK(e.autoWaitSec == 50 && e.shake && e.general.simHaptics && e.statsHotkey.empty() && e.micButtonStats, "valores nuevos por defecto (en)");
+        auto p = ds5::ProfileSet::parse("[general]\nespera_automatico = 90\nagitar = no\nboton_microfono_estadisticas = no\natajo_estadisticas = Ctrl+Alt+D\n"
                                         "[mafia]\nmodo = xbox\nhaptica_simulada = no\nsensibilidad = 8\n");
-        CHECK(p.autoWaitSec == 90 && !p.shake && !p.psButtonStats && p.statsHotkey == "ctrl+alt+d", "claves de [general]");
+        CHECK(p.autoWaitSec == 90 && !p.shake && !p.micButtonStats && p.statsHotkey == "ctrl+alt+d", "claves de [general]");
         auto v = p.resolve("mafia3definitiveedition.exe");
         CHECK(!v.simHaptics && !v.simSpeaker && v.sensitivity == 8 && v.mode == ds5::kModeXbox, "perfil por juego");
         // Agitar anota el modo en el perfil: la sección repetida gana

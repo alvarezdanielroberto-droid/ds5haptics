@@ -5,8 +5,8 @@
 //
 // tray_ui.h — Ícono en la bandeja del sistema y cuadro de estadísticas (solo Windows).
 //
-//   - Ícono "ds5haptics" junto al reloj. Clic izquierdo, el atajo de teclado (Alt+F11 por
-//     defecto) o el botón PS: muestra u oculta las estadísticas. Clic derecho: Ver estadísticas / Iniciar con Windows / Salir.
+//   - Ícono "ds5haptics" junto al reloj. Clic izquierdo, el botón de micrófono del mando o
+//     un atajo de teclado (si se configuró): muestra u oculta las estadísticas. Clic derecho: Ver estadísticas / Iniciar con Windows / Salir.
 //   - Cuadro semitransparente arriba a la derecha, siempre visible, que deja pasar los clics
 //     al juego y no le quita el foco.
 //
@@ -59,6 +59,7 @@ struct Stats {
     float speakerGain = 1;
     // Gatillos adaptativos (modo de efecto que pidió el juego; -1 = nunca los configuró)
     int trigR = -1, trigL = -1;
+    bool dsxMod = false;                   // un mod para DSX mandó gatillos o luces hace poco
     unsigned gameOutputs = 0;
 };
 
@@ -114,6 +115,11 @@ private:
                   kIdStats = 101, kIdAutostart = 102, kIdExit = 103,
                   kTimerOverlay = 1, kTimerTip = 2, kHotkey = 1 };
 
+    static std::string trigName(int m) {   // modo de efecto de un gatillo, en palabras
+        if (m < 0) return tr("sin configurar", "not set");
+        if (m == 0 || m == 5) return tr("sin efecto", "no effect");
+        return tr("con efecto", "effect on");
+    }
     static std::wstring w(const std::string& s) {
         if (s.empty()) return {};
         int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
@@ -255,7 +261,8 @@ private:
 
     void showMenu() {
         HMENU m = CreatePopupMenu();
-        std::wstring statsItem = std::wstring(trw(L"Ver estadísticas", L"Show stats")) + L"\t" + hotkeyLabel();
+        std::wstring statsItem = trw(L"Ver estadísticas", L"Show stats");
+        if (!hotkeyLabel().empty()) statsItem += L"\t" + hotkeyLabel();
         AppendMenuW(m, MF_STRING | (overlayVisible_ ? MF_CHECKED : 0), kIdStats, statsItem.c_str());
         bool autoOn = cb_.autostartOn && cb_.autostartOn();
         AppendMenuW(m, MF_STRING | (autoOn ? MF_CHECKED : 0), kIdAutostart, trw(L"Iniciar con Windows", L"Start with Windows"));
@@ -382,7 +389,8 @@ private:
 
         if (s.mode != 0) {
             row(trw(L"Háptica", L"Haptics"), trw(L"no disponible (solo vibración clásica)", L"not available (classic rumble only)"));
-            row(trw(L"Gatillos", L"Triggers"), trw(L"no disponibles en este modo", L"not available in this mode"));
+            if (s.dsxMod) row(trw(L"Gatillos", L"Triggers"), w(std::string(tr("mod DSX: ", "DSX mod: ")) + "L2 " + trigName(s.trigL) + ", R2 " + trigName(s.trigR)));
+            else row(trw(L"Gatillos", L"Triggers"), trw(L"no disponibles en este modo", L"not available in this mode"));
             row(trw(L"Parlante", L"Speaker"), trw(L"no disponible en este modo", L"not available in this mode"));
             row(trw(L"Latencia", L"Latency"), L"-");
         } else {
@@ -409,13 +417,9 @@ private:
                 DrawTextW(dc, wh.c_str(), int(wh.size()), &r, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
                 y += lineH();
             }
-            auto trig = [](int m) {
-                if (m < 0) return std::string(tr("sin configurar", "not set"));
-                if (m == 0 || m == 5) return std::string(tr("sin efecto", "no effect"));
-                return std::string(tr("con efecto", "effect on"));
-            };
             std::string trg = s.trigL < 0 && s.trigR < 0 ? std::string(tr("el juego no los usó", "not used by the game"))
-                              : "L2 " + trig(s.trigL) + ", R2 " + trig(s.trigR);
+                              : (s.dsxMod ? std::string(tr("mod DSX: ", "DSX mod: ")) : std::string()) +
+                                    "L2 " + trigName(s.trigL) + ", R2 " + trigName(s.trigR);
             row(trw(L"Gatillos", L"Triggers"), w(trg));
             std::string sp;
             if (!s.speakerEnabled) sp = tr("desactivado", "off");
@@ -442,7 +446,9 @@ private:
 
         SelectObject(dc, fontSmall_);
         SetTextColor(dc, dim);
-        std::wstring footS = hotkeyLabel() + trw(L" o botón PS para ocultar", L" or PS button to hide");
+        std::wstring hk = hotkeyLabel();
+        std::wstring footS = std::wstring(trw(L"Botón de micrófono", L"Mic button")) + (hk.empty() ? L"" : L" / " + hk) +
+                             trw(L" para ocultar", L" to hide");
         const wchar_t* foot = footS.c_str();
         TextOutW(dc, x0, rc.bottom - px(22), foot, int(wcslen(foot)));
 
@@ -491,8 +497,8 @@ private:
             std::string l8;
             int n = WideCharToMultiByte(CP_UTF8, 0, lab.c_str(), -1, nullptr, 0, nullptr, nullptr);
             if (n > 1) { l8.resize(size_t(n - 1)); WideCharToMultiByte(CP_UTF8, 0, lab.c_str(), -1, &l8[0], n, nullptr, nullptr); }
-            log(l8 + tr(": no se pudo registrar el atajo (otro programa lo usa). Las estadísticas se abren con el botón PS o con clic en el ícono.",
-                        ": could not register the shortcut (another program uses it). Open the stats with the PS button or by clicking the icon."));
+            log(l8 + tr(": no se pudo registrar el atajo (otro programa lo usa). Las estadísticas se abren con el botón de micrófono o con clic en el ícono.",
+                        ": could not register the shortcut (another program uses it). Open the stats with the mic button or by clicking the icon."));
         }
     }
 
@@ -614,8 +620,8 @@ private:
     std::thread thread_;
     std::mutex mu_;
     Stats stats_;
-    unsigned hkMods_ = 0x0001, hkVk_ = 0x7A;   // Alt+F11
-    std::wstring hkLabel_ = L"Alt+F11";
+    unsigned hkMods_ = 0, hkVk_ = 0;   // sin atajo por defecto
+    std::wstring hkLabel_;
     std::atomic<HWND> hidden_{nullptr};
     HWND overlay_ = nullptr;
     HICON icon_ = nullptr;
