@@ -75,7 +75,10 @@ struct ProfileSet {
     int autoWaitSec = 50;       // segundos que se espera antes del cambio automático de modo
     bool shake = true;          // agitar el mando cambia de modo
     bool psButtonStats = true;  // el botón PS muestra u oculta las estadísticas
-    bool fastHaptics = true;    // háptica simulada con reportes cortos (menos atraso)
+    // Háptica simulada con paquetes 0x32 (solo háptica). Probado: si antes el mando recibió
+    // paquetes 0x36 (con audio, por ejemplo un aviso hablado), deja de hacer caso a los 0x32
+    // a los pocos segundos. Por eso queda apagado: experimental.
+    bool fastHaptics = false;
     std::string statsHotkey = "alt+f11";
 
     // Nombre del programa sin carpeta ni ".exe", en minúsculas ("BatmanAK.exe" -> "batmanak")
@@ -271,8 +274,8 @@ static const char* const kDefaultIniEs =
     "#        haptica (suave para pisadas, lluvia, viento; fuerte para golpes y explosiones).\r\n"
     "# parlante_simulado = si/no (EXPERIMENTAL): en modo ps4/xbox, la parte aguda del sonido\r\n"
     "#        sale bajito por el parlante del mando y sube con mecanismos y chirridos.\r\n"
-    "# haptica_rapida = si/no: la haptica simulada usa paquetes solo de haptica (menos atraso).\r\n"
-    "#        Si se siente rara, ponelo en no. Solo en [general].\r\n"
+    "# haptica_rapida = si/no (EXPERIMENTAL, por defecto no): paquetes solo de haptica en modo\r\n"
+    "#        ps4/xbox. En algunos mandos la haptica se corta a los pocos segundos.\r\n"
     "# sensibilidad = 1 a 10: cuanto tiene que sonar algo para contar como golpe fuerte\r\n"
     "#        (1 = solo explosiones, 10 = casi todo).\r\n"
     "# bateria_baja = porcentaje desde el que parpadea la luz del microfono (0 = nunca).\r\n"
@@ -335,8 +338,8 @@ static const char* const kDefaultIniEn =
     "#        footsteps, rain, wind; strong for hits and explosions).\r\n"
     "# simulated_speaker = yes/no (EXPERIMENTAL): in ps4/xbox mode, the high-pitched part of the\r\n"
     "#        sound plays softly on the controller speaker and gets loud for mechanisms and squeaks.\r\n"
-    "# fast_haptics = yes/no: simulated haptics use haptics-only packets (less delay). If it feels\r\n"
-    "#        odd, set it to no. Only in [general].\r\n"
+    "# fast_haptics = yes/no (EXPERIMENTAL, default no): haptics-only packets in ps4/xbox mode.\r\n"
+    "#        On some controllers haptics stop after a few seconds.\r\n"
     "# sensitivity = 1 to 10: how loud something must be to count as a hit\r\n"
     "#        (1 = only explosions, 10 = almost everything).\r\n"
     "# low_battery = percentage at which the mic button light starts pulsing (0 = never).\r\n"

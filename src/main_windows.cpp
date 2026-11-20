@@ -1349,7 +1349,7 @@ static int cmdVirtual(const Options& opt) {
     // Modo Xbox/PS4: háptica y parlante simulados a partir del sonido del juego
     ds5::SimFx simFx;
     std::atomic<bool> simActive{false}, simHapOn{true}, simSpkOn{false};
-    std::atomic<bool> fastSim{true};          // haptica_rapida
+    std::atomic<bool> fastSim{false};         // haptica_rapida (experimental)
     // Bytes de háptica por reporte 0x32. Con menos de 64 el mando no rellena: reproduce el
     // reporte completo con ceros y suena un zumbido intermitente (probado). Quedan 64.
     std::atomic<int> fastSimBytes{64};
