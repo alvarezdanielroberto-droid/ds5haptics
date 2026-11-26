@@ -129,23 +129,45 @@ public:
             ++drops_;
         }
     }
+    // Colchón (para audio que llega en paquetes grandes, como la captura de Windows: 480
+    // frames cada 10 ms mientras el mando pide 512). Con 'blocks' > 0, pop() no saca nada
+    // hasta juntar ese colchón, y nunca entrega un bloque a medias: o sale completo o sale
+    // silencio entero (y se vuelve a juntar el colchón). Sin colchón, rellenar a medias metía
+    // huequitos de silencio varias veces por segundo: sonido entrecortado, con chasquidos.
+    void setCushion(size_t blocks) {
+        std::lock_guard<std::mutex> lk(mu_);
+        cushion_ = blocks;
+        primed_ = blocks == 0;
+    }
+
     // Saca 512 frames; si no hay suficientes, completa con silencio.
     bool pop(float* out) {
         std::lock_guard<std::mutex> lk(mu_);
         const size_t need = kSpeakerInFrames * 2;
+        if (cushion_) {
+            if (!primed_ && buf_.size() >= need * (cushion_ + 1)) primed_ = true;
+            if (!primed_ || buf_.size() < need) {
+                if (primed_) { primed_ = false; ++underruns_; }
+                std::fill(out, out + need, 0.0f);
+                return false;
+            }
+        }
         size_t n = std::min(need, buf_.size());
         std::copy(buf_.begin(), buf_.begin() + n, out);
         std::fill(out + n, out + need, 0.0f);
         buf_.erase(buf_.begin(), buf_.begin() + n);
         return n == need;
     }
-    void clear() { std::lock_guard<std::mutex> lk(mu_); buf_.clear(); }
+    void clear() { std::lock_guard<std::mutex> lk(mu_); buf_.clear(); primed_ = cushion_ == 0; }
     unsigned drops() const { return drops_; }
+    unsigned underruns() const { return underruns_; }
 
 private:
     std::mutex mu_;
     std::deque<float> buf_;
-    unsigned drops_ = 0;
+    unsigned drops_ = 0, underruns_ = 0;
+    size_t cushion_ = 0;
+    bool primed_ = true;
 };
 
 }  // namespace ds5

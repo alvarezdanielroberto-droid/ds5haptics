@@ -107,6 +107,26 @@ pulsando**. Vuelve a la normalidad al enchufarlo. El umbral se cambia con `bater
 en `[general]` (`0` lo desactiva). El mando informa la batería en pasos de 10%.
 `ds5haptics battery` muestra el nivel actual, y cada cambio queda anotado en `ds5haptics.log`.
 
+### Parlante simulado (experimental)
+
+Con `parlante_simulado = si`, en modo ps4/xbox suenan por el parlante del mando solo los
+"golpes" del sonido del juego: pisadas, impactos, clics de armas, puertas, vidrios. Cómo los
+separa (`src/percussive.h`):
+
+1. **Separación armónico/percusiva (HPSS):** ventanas de 2048 muestras cada 512 (10,7 ms). Lo
+   que dura (voz, música, motores) forma líneas horizontales en el espectro y lo estima la
+   mediana en el tiempo; un golpe es una línea vertical y lo estima la mediana entre
+   frecuencias vecinas. Cada frecuencia se reparte con una máscara de Wiener.
+2. **Compuerta:** lo percusivo tiene que subir de golpe sobre su fondo (la lluvia no pasa), ser
+   buena parte del sonido o saltar de golpe, y **no ser periódico** (autocorrelación entre
+   80 Hz y 1 kHz): así no pasan las sílabas de una voz aunque el tono se mueva.
+3. Sin graves (< 250 Hz, eso va a la háptica) y normalizado contra el volumen del juego.
+
+Atraso ~53 ms. Usa ~2 % de un núcleo. La captura de Windows llega en paquetes de 10 ms y el
+mando pide bloques de 10,7 ms: el parlante guarda un colchón de ~21 ms para no entrecortarse
+(antes rellenaba con silencio a mitad de bloque varias veces por segundo, y eso sonaba
+entrecortado, con chasquidos).
+
 ### Mods hechos para DSX (experimental)
 
 Algunos mods de la comunidad (por ejemplo, uno para RDR2) mandan a DSX por UDP, a

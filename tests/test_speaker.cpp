@@ -95,6 +95,48 @@ int main() {
     fifo.push(big.data(), 5000);
     CHECK(fifo.drops() == 1 && fifo.pop(out), "cola acotada");
 
+    // Con colchón (captura de Windows: 480 frames cada 10 ms, el mando pide 512):
+    // nunca un bloque a medias, y después de juntar el colchón, sin cortes
+    {
+        ds5::SpeakerFifo f;
+        f.setCushion(1);
+        std::vector<float> pkt(480 * 2);
+        float o[ds5::kSpeakerInFrames * 2];
+        int half = 0, gaps = 0, full = 0;
+        bool started = false;
+        double pushed = 0, popped = 0;
+        for (int step = 0; step < 3000; ++step) {   // ~32 s, un pop cada 10,67 ms
+            // los paquetes de 10 ms llegan según su propio reloj, con algo de desorden
+            const double now = (step + 1) * 512.0;
+            while (pushed + 480 <= now + ((step * 7) % 5) * 96) {
+                for (size_t i = 0; i < pkt.size(); ++i) pkt[i] = 0.5f;
+                f.push(pkt.data(), 480, 6, 3);
+                pushed += 480;
+            }
+            bool ok = f.pop(o);
+            int z = 0;
+            for (float v : o) z += v == 0.0f;
+            if (z != 0 && z != int(ds5::kSpeakerInFrames * 2)) ++half;
+            if (ok) { started = true; ++full; popped += 512; }
+            else if (started) ++gaps;
+        }
+        CHECK(half == 0, "colchón: nunca un bloque a medias (%d)", half);
+        CHECK(started && gaps == 0, "colchón: sin cortes después de arrancar (%d)", gaps);
+        // sin colchón (como antes), el mismo patrón metía silencios a mitad de bloque
+        ds5::SpeakerFifo g;
+        int halfOld = 0;
+        pushed = 0;
+        for (int step = 0; step < 300; ++step) {
+            const double now = (step + 1) * 512.0;
+            while (pushed + 480 <= now) { g.push(pkt.data(), 480); pushed += 480; }
+            g.pop(o);
+            int z = 0;
+            for (float v : o) z += v == 0.0f;
+            if (z != 0 && z != int(ds5::kSpeakerInFrames * 2)) ++halfOld;
+        }
+        CHECK(halfOld >= 5, "sin colchón había huequitos (%d en 3 s)", halfOld);
+    }
+
     opus_decoder_destroy(dec);
     if (!failures) std::printf("OK: parlante por Bluetooth (0x36 + Opus) correcto\n");
     return failures ? 1 : 0;

@@ -2026,7 +2026,7 @@ static int cmdVirtual(const Options& opt) {
 #ifdef DS5_WITH_OPUS
         // Mismo margen que con un juego de DualSense: con menos, los paquetes de audio que llegan
         // juntos se descartaban y el sonido se entrecortaba
-        if (c.speaker && !simSpk.empty()) speakerFifo.push(simSpk.data(), simSpk.size() / 2);
+        if (c.speaker && !simSpk.empty()) speakerFifo.push(simSpk.data(), simSpk.size() / 2, 6, 3);
 #endif
     };
     auto stopSim = [&] {
@@ -2035,6 +2035,10 @@ static int cmdVirtual(const Options& opt) {
         procCap.stop();
         outCap.stop();
         simRunning = false;
+#ifdef DS5_WITH_OPUS
+        speakerFifo.setCushion(0);   // el juego de DualSense manda el audio cada 1 ms: sin colchón
+        speakerFifo.clear();
+#endif
     };
     auto updateSim = [&] {
         const bool want = padMode != ds5::kModePs5 && (simHapOn || simSpkOn) && currentPid != 0 && !btLost;
@@ -2042,6 +2046,12 @@ static int cmdVirtual(const Options& opt) {
         stopSim();
         if (!want || currentPid == simFailedPid) return;
         simPid = currentPid;
+#ifdef DS5_WITH_OPUS
+        // La captura de Windows llega en paquetes de 10 ms: el parlante necesita un colchón
+        // para no entrecortarse
+        speakerFifo.clear();
+        speakerFifo.setCushion(1);
+#endif
         simActive = true;
         if (procCap.start(simPid, simFeed)) {
             simSource = tr("solo el sonido del juego", "game sound only");
@@ -2063,7 +2073,7 @@ static int cmdVirtual(const Options& opt) {
         if (simSpkOn) routeSpeaker();
         std::lock_guard<std::mutex> lg(logMu);
         std::printf(tr("\nHáptica simulada%s a partir de %s (sensibilidad %d).\n", "\nSimulated haptics%s from %s (sensitivity %d).\n"),
-                    simSpkOn ? tr(", y los sonidos agudos por el parlante,", ", plus high-pitched sounds on the speaker,") : "", simSource.c_str(), simSens.load());
+                    simSpkOn ? tr(", y los golpes (pisadas, impactos) por el parlante,", ", plus hits (footsteps, impacts) on the speaker,") : "", simSource.c_str(), simSens.load());
     };
 
     bool wasImported = false;
