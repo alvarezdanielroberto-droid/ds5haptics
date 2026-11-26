@@ -3,8 +3,9 @@
 // If a copy of the MPL was not distributed with this file, You can obtain one at
 // https://mozilla.org/MPL/2.0/.
 //
-// percussive.h — EXPERIMENTAL: saca del sonido del juego solo los "golpes" (pisadas, impactos,
-// clics de armas, puertas, vidrios) para el parlante del mando. Portable, sin dependencias.
+// percussive.h — EXPERIMENTAL: saca del sonido del juego solo los chasquidos intensos (disparos,
+// latigazos, clics metálicos, vidrios, golpes secos) para el parlante del mando. Las pisadas,
+// las voces y la música no pasan. Portable, sin dependencias.
 //
 // Cómo: separación armónico/percusiva (HPSS, Fitzgerald 2010) en tiempo real.
 //   - El sonido se analiza en ventanas de 2048 muestras (43 ms) cada 512 (10,7 ms). Con
@@ -18,7 +19,9 @@
 //   - Lo percusivo que queda pasa por una "compuerta": solo se abre si sube de golpe por
 //     encima de su fondo (así la lluvia o el viento, que son parejos, no pasan), si es buena
 //     parte del sonido o salta de golpe, y si no es periódico (una voz o una nota repiten un
-//     tono aunque se mueva; una pisada o un golpe son ruido).
+//     tono aunque se mueva; una pisada o un golpe son ruido). Además el pico agudo tiene que
+//     sobresalir mucho del volumen promedio del juego (~12 veces) y el golpe tiene que ser
+//     agudo (centroide > ~3,7 kHz): así quedan los chasquidos y no las pisadas.
 //   - Sin graves (< 250 Hz, eso va a la háptica) y normalizado contra el volumen del juego.
 // Atraso total ~53 ms (ventana + lo que mira hacia adelante). Un golpe es corto: se escucha
 // como parte de la acción.
@@ -100,12 +103,21 @@ public:
     float lastPercussiveFraction() const { return percFrac_; }
     float lastBurstRatio() const { return burstRatio_; }
     float lastFractionJump() const { return fracJump_; }
+    float lastCentroid() const { return centroid_; }
+    float lastLoudness() const { return loudness_; }
 
     // Entrada estéreo 48 kHz intercalada; agrega a 'out' la misma cantidad de frames.
     void process(const float* st, size_t frames, std::vector<float>& out) {
         for (size_t i = 0; i < frames; ++i) {
             in_[size_t(fill_) * 2] = st[i * 2];
             in_[size_t(fill_) * 2 + 1] = st[i * 2 + 1];
+            {   // pico de la parte aguda (> ~1,5 kHz) y volumen promedio, para medir "chasquidos"
+                const float m = 0.5f * (st[i * 2] + st[i * 2 + 1]);
+                hpZ_ += 0.18f * (m - hpZ_);
+                const float h = m - hpZ_;
+                hopPeak_ = std::max(hopPeak_, std::fabs(h));
+                hopPow_ += m * m;
+            }
             ++fill_;
             if (fill_ == kN) {
                 frame();
@@ -186,6 +198,14 @@ private:
             const cf c = 0.5f * (xl + xr);
             m[k] = std::sqrt(c.real() * c.real() + c.imag() * c.imag());   // std::abs usa hypot: lento
         }
+        // Pico de este salto (para medir chasquidos) y volumen promedio
+        peaks_[size_t(frames_ % kPk)] = hopPeak_;
+        {
+            const float hp = hopPow_ / kHop;
+            if (hp > 1e-9f) powAvg_ += (hp - powAvg_) * kAvgSlow;
+        }
+        hopPeak_ = 0;
+        hopPow_ = 0;
         // Volumen del juego (para normalizar): sube enseguida y baja en ~4 s
         const float rms = std::sqrt(pin / kHop);
         ref_ = rms > ref_ ? rms : std::max(ref_ * kRefRel, kRefMin);
@@ -218,6 +238,23 @@ private:
         float etot = 0;
         for (int k = lo_; k <= hi_; ++k) etot += mc[k] * mc[k];
         percFrac_ = etot > 0 ? ep / etot : 0;
+        // Brillo de lo percusivo (centroide, Hz) y qué tan fuerte es contra el volumen
+        // promedio del juego (~3 s): un chasquido intenso es agudo y sobresale mucho
+        {
+            float num = 0;
+            for (int k = lo_; k <= hi_; ++k) {
+                const float e = mask[size_t(k)] * mc[k];
+                num += float(k) * e * e;
+            }
+            centroid_ = ep > 0 ? num / ep * (48000.0f / kN) : 0;
+        }
+        // Pico agudo de las ventanas que forman la ventana del centro, contra el volumen
+        // promedio del juego (RMS de ~3 s)
+        {
+            float pk = 0;
+            for (int j = 0; j < kN / kHop; ++j) pk = std::max(pk, peaks_[size_t((center - j + kPk * 4) % kPk)]);
+            loudness_ = pk / std::max(std::sqrt(powAvg_), 1e-4f);
+        }
 
         // Compuerta: lo percusivo tiene que subir de golpe por encima de su fondo y no ser un tono
         const float thr = 6.0f - 0.4f * sens_;   // 1 -> 5,6x ; 10 -> 2x (en energía)
@@ -227,7 +264,12 @@ private:
         // siempre más o menos la misma (sube y baja con cada sílaba); una pisada la hace saltar.
         const float fracJump = percFrac_ / std::max(fracBg_, 0.02f);
         fracJump_ = fracJump;
-        bool burst = ep > floorE && ep > thr * std::max(bg_, floorE) && (percFrac_ > kFracMin || fracJump > kFracJump);
+        // Solo chasquidos intensos: el pico agudo tiene que sobresalir mucho del volumen promedio
+        // del juego y el golpe tiene que ser agudo (las pisadas, más graves y suaves, no pasan)
+        const float crestThr = 17.0f - 1.0f * sens_;      // 1 -> 16x ; 5 -> 12x ; 10 -> 7x
+        const float centroidMin = 4500.0f - 150.0f * sens_; // 1 -> 4,35 kHz ; 5 -> 3,75 ; 10 -> 3
+        bool burst = ep > floorE && ep > thr * std::max(bg_, floorE) && (percFrac_ > kFracMin || fracJump > kFracJump) &&
+                     loudness_ > crestThr && centroid_ > centroidMin;
         if (burst) {   // la periodicidad cuesta una FFT más: solo si hace falta
             periodic_ = periodicity(mask.data(), mc);
             burst = periodic_ < kPeriodicMax;
@@ -277,10 +319,14 @@ private:
     static constexpr float kBgDown = 0.30f;      // fondo: baja en ~30 ms...
     static constexpr float kBgUp = 0.0106f;      // ... y sube en ~1 s
     static constexpr float kGateRel = 0.21f;     // la compuerta se cierra en ~45 ms
+    static constexpr float kAvgSlow = 0.0036f;   // volumen promedio del juego: ~3 s
     static constexpr float kRefRel = 0.99734f;   // volumen del juego: baja en ~4 s
     static constexpr int kHoldHops = 6;          // la compuerta queda abierta ~64 ms
 
     std::vector<float> win_, winAc_;
+    float centroid_ = 0, loudness_ = 0, powAvg_ = 0, hpZ_ = 0, hopPeak_ = 0, hopPow_ = 0;
+    static constexpr int kPk = 8;   // picos de los últimos saltos (ventana del centro + lo que mira adelante)
+    float peaks_[kPk] = {};
     float periodic_ = 0, percFrac_ = 0, burstRatio_ = 0, fracBg_ = 0.1f, fracJump_ = 0;
     std::vector<cf> tw_;
     std::vector<int> rev_;

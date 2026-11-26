@@ -2009,6 +2009,9 @@ static int cmdVirtual(const Options& opt) {
     ds5::LoopbackCapture outCap;
     bool simRunning = false;
     DWORD simPid = 0, simFailedPid = 0;
+#ifdef DS5_WITH_OPUS
+    unsigned simHitsAtStart = 0, simUnderrunsAtStart = 0, simDropsAtStart = 0;   // para el resumen
+#endif
     std::string simSource;
     std::vector<float> simHap, simSpk;
     auto simFeed = [&](const float* f, size_t n, unsigned rate) {
@@ -2022,12 +2025,12 @@ static int cmdVirtual(const Options& opt) {
         simFx.configure(c);
         simSpk.clear();
         simFx.process(f, n, rate, simHap, simSpk);
-        haptics->feed(simHap.data(), n, rate);
 #ifdef DS5_WITH_OPUS
-        // Mismo margen que con un juego de DualSense: con menos, los paquetes de audio que llegan
-        // juntos se descartaban y el sonido se entrecortaba
-        if (c.speaker && !simSpk.empty()) speakerFifo.push(simSpk.data(), simSpk.size() / 2, 6, 3);
+        // El parlante ANTES que la háptica: el envío sale cuando la háptica está lista, y si el
+        // sonido todavía no llegó a la cola, ese bloque salía en silencio (un corte)
+        if (c.speaker && !simSpk.empty()) speakerFifo.push(simSpk.data(), simSpk.size() / 2, 12, 6);
 #endif
+        haptics->feed(simHap.data(), n, rate);
     };
     auto stopSim = [&] {
         if (!simRunning) return;
@@ -2036,6 +2039,13 @@ static int cmdVirtual(const Options& opt) {
         outCap.stop();
         simRunning = false;
 #ifdef DS5_WITH_OPUS
+        if (simSpkOn) {
+            std::lock_guard<std::mutex> lg(logMu);
+            std::printf(tr("\nParlante simulado: %u chasquidos, %u cortes por falta de sonido, %u descartes por exceso.\n",
+                           "\nSimulated speaker: %u snaps, %u gaps (sound ran out), %u drops (too much sound).\n"),
+                        simFx.speakerHits() - simHitsAtStart, speakerFifo.underruns() - simUnderrunsAtStart,
+                        speakerFifo.drops() - simDropsAtStart);
+        }
         speakerFifo.setCushion(0);   // el juego de DualSense manda el audio cada 1 ms: sin colchón
         speakerFifo.clear();
 #endif
@@ -2047,10 +2057,14 @@ static int cmdVirtual(const Options& opt) {
         if (!want || currentPid == simFailedPid) return;
         simPid = currentPid;
 #ifdef DS5_WITH_OPUS
-        // La captura de Windows llega en paquetes de 10 ms: el parlante necesita un colchón
-        // para no entrecortarse
+        // La captura de Windows llega en paquetes de 10 ms (a veces de a dos) y el separador de
+        // chasquidos entrega de a 10,7 ms: el parlante necesita un colchón (~32 ms) para no
+        // entrecortarse
         speakerFifo.clear();
-        speakerFifo.setCushion(1);
+        speakerFifo.setCushion(3);
+        simHitsAtStart = simFx.speakerHits();
+        simUnderrunsAtStart = speakerFifo.underruns();
+        simDropsAtStart = speakerFifo.drops();
 #endif
         simActive = true;
         if (procCap.start(simPid, simFeed)) {
@@ -2073,7 +2087,7 @@ static int cmdVirtual(const Options& opt) {
         if (simSpkOn) routeSpeaker();
         std::lock_guard<std::mutex> lg(logMu);
         std::printf(tr("\nHáptica simulada%s a partir de %s (sensibilidad %d).\n", "\nSimulated haptics%s from %s (sensitivity %d).\n"),
-                    simSpkOn ? tr(", y los golpes (pisadas, impactos) por el parlante,", ", plus hits (footsteps, impacts) on the speaker,") : "", simSource.c_str(), simSens.load());
+                    simSpkOn ? tr(", y los chasquidos intensos por el parlante,", ", plus loud snaps on the speaker,") : "", simSource.c_str(), simSens.load());
     };
 
     bool wasImported = false;

@@ -110,8 +110,8 @@ en `[general]` (`0` lo desactiva). El mando informa la batería en pasos de 10%.
 ### Parlante simulado (experimental)
 
 Con `parlante_simulado = si`, en modo ps4/xbox suenan por el parlante del mando solo los
-"golpes" del sonido del juego: pisadas, impactos, clics de armas, puertas, vidrios. Cómo los
-separa (`src/percussive.h`):
+chasquidos intensos del sonido del juego: disparos, latigazos, clics metálicos, vidrios. Sin
+voces, música ni pisadas. Cómo los separa (`src/percussive.h`):
 
 1. **Separación armónico/percusiva (HPSS):** ventanas de 2048 muestras cada 512 (10,7 ms). Lo
    que dura (voz, música, motores) forma líneas horizontales en el espectro y lo estima la
@@ -120,12 +120,18 @@ separa (`src/percussive.h`):
 2. **Compuerta:** lo percusivo tiene que subir de golpe sobre su fondo (la lluvia no pasa), ser
    buena parte del sonido o saltar de golpe, y **no ser periódico** (autocorrelación entre
    80 Hz y 1 kHz): así no pasan las sílabas de una voz aunque el tono se mueva.
-3. Sin graves (< 250 Hz, eso va a la háptica) y normalizado contra el volumen del juego.
+3. **Solo chasquidos:** el pico de la parte aguda tiene que sobresalir ~12 veces del volumen
+   promedio del juego (~3 s), y el golpe tiene que ser agudo (centroide > ~3,7 kHz). Las
+   pisadas, más graves y suaves, no pasan. `sensibilidad` mueve los dos límites.
+4. Sin graves (< 250 Hz, eso va a la háptica) y normalizado contra el volumen del juego.
 
-Atraso ~53 ms. Usa ~2 % de un núcleo. La captura de Windows llega en paquetes de 10 ms y el
-mando pide bloques de 10,7 ms: el parlante guarda un colchón de ~21 ms para no entrecortarse
+Atraso ~53 ms más un colchón de ~32 ms. Usa ~2 % de un núcleo. La captura de Windows llega en
+paquetes de 10 ms (a veces de a dos) y el mando pide bloques de 10,7 ms: el parlante guarda un
+colchón para no entrecortarse
 (antes rellenaba con silencio a mitad de bloque varias veces por segundo, y eso sonaba
 entrecortado, con chasquidos).
+Al cerrar el juego, el registro dice cuántos chasquidos sonaron y cuántos cortes hubo por falta
+de sonido: si hay cortes, avisá.
 
 ### Mods hechos para DSX (experimental)
 

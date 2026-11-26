@@ -26,6 +26,7 @@
 #include <opus.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <deque>
@@ -165,7 +166,7 @@ public:
 private:
     std::mutex mu_;
     std::deque<float> buf_;
-    unsigned drops_ = 0, underruns_ = 0;
+    std::atomic<unsigned> drops_{0}, underruns_{0};   // se leen desde otro hilo
     size_t cushion_ = 0;
     bool primed_ = true;
 };

@@ -115,7 +115,7 @@ int main() {
         CHECK(fx.impacts() == 1, "explosión: un golpe (%u)", fx.impacts());
         CHECK(hapBoom > 0.45f && hapBoom <= 0.5f, "explosión: háptica a fondo, sin pasar de 0,5 (%.3f)", hapBoom);
         CHECK(spkMax < 1.0f, "el parlante no se pasa de 1 (%.3f)", spkMax);
-        // Parlante (golpes): pisadas sí; voz, música y lluvia no
+        // Parlante: solo chasquidos intensos; pisadas, voz, música y lluvia no
         {
             const size_t n = rate * 6;   // 6 s
             auto runSpk = [&](std::vector<float>& sig, unsigned& hits, float& rmsOut) {
@@ -185,26 +185,45 @@ int main() {
                 }
                 norm(music, 0.1f);
             }
+            // Chasquidos: ruido muy corto (4 ms), agudo y fuerte, uno por segundo
+            std::vector<float> snaps(n * 2, 0.0f);
+            {
+                float lp = 0;
+                for (size_t i = 0; i < n; ++i) {
+                    const float ph = float((i + rate / 4) % rate) / rate;
+                    const float env = ph < 0.03f ? std::exp(-ph / 0.004f) : 0.0f;
+                    const float x = noise() * 1.7f * env;
+                    lp += 0.18f * (x - lp);
+                    snaps[i * 2] = snaps[i * 2 + 1] = 0.5f * (x - lp);
+                }
+            }
             std::vector<float> rain(n * 2);
             for (float& x : rain) x = noise();
             norm(rain, 0.1f);
 
-            unsigned hS, hV, hM, hR, hVS, hMS;
-            float rS, rV, rM, rR, rVS, rMS;
-            runSpk(steps, hS, rS);
+            unsigned hK, hV, hM, hR, hMS, hMK, hAll;
+            float rK, rV, rM, rR, rMS, rMK, rAll;
+            runSpk(snaps, hK, rK);
             runSpk(voice, hV, rV);
             runSpk(music, hM, rM);
             runSpk(rain, hR, rR);
-            std::vector<float> vs(voice), ms(music);
-            for (size_t i = 0; i < vs.size(); ++i) { vs[i] += 0.3f * steps[i]; ms[i] += 0.3f * steps[i]; }
-            runSpk(vs, hVS, rVS);
+            // escenas mezcladas: música baja + pisadas; música + chasquidos; voz + pisadas + chasquidos
+            std::vector<float> ms(music), mk(music), all(voice);
+            for (size_t i = 0; i < ms.size(); ++i) {
+                ms[i] = 0.6f * music[i] + 0.4f * steps[i];
+                mk[i] = 0.3f * music[i] + snaps[i];
+                all[i] = 0.4f * voice[i] + 0.3f * steps[i] + snaps[i];
+            }
             runSpk(ms, hMS, rMS);
-            CHECK(hS >= 11 && hS <= 12 && rS > 0.05f, "pisadas: cada una al parlante (%u, %.3f)", hS, rS);
-            CHECK(hM <= 1 && rM < 0.01f, "música: no pasa (%u, %.3f)", hM, rM);
-            CHECK(hR <= 1 && rR < 0.01f, "lluvia pareja: no pasa (%u, %.3f)", hR, rR);
-            CHECK(hV <= 6 && rV < 0.4f * rS, "voz: casi no pasa (%u, %.3f)", hV, rV);
-            CHECK(hMS >= 10 && rMS > 0.03f, "pisadas bajo la música: se oyen (%u, %.3f)", hMS, rMS);
-            CHECK(hVS >= 10 && rVS > 0.03f, "pisadas bajo la voz: se oyen (%u, %.3f)", hVS, rVS);
+            runSpk(mk, hMK, rMK);
+            runSpk(all, hAll, rAll);
+            CHECK(hK >= 5 && hK <= 6 && rK > 0.01f, "chasquidos: cada uno al parlante (%u, %.3f)", hK, rK);
+            CHECK(hM == 0 && rM < 0.005f, "música: no pasa (%u, %.3f)", hM, rM);
+            CHECK(hR <= 1 && rR < 0.005f, "lluvia pareja: no pasa (%u, %.3f)", hR, rR);
+            CHECK(hV == 0 && rV < 0.005f, "voz: no pasa (%u, %.3f)", hV, rV);
+            CHECK(hMS == 0 && rMS < 0.005f, "pisadas con música: no pasan (%u, %.3f)", hMS, rMS);
+            CHECK(hMK >= 5 && rMK > 0.01f, "chasquidos con música: pasan (%u, %.3f)", hMK, rMK);
+            CHECK(hAll >= 5 && hAll <= 7, "voz + pisadas + chasquidos: solo los chasquidos (%u)", hAll);
             // Ganancia (volumen del parlante del perfil): más volumen, más señal
             {
                 ds5::SimFx::Config c2 = c;
@@ -212,11 +231,11 @@ int main() {
                 ds5::SimFx f;
                 f.configure(c2);
                 std::vector<float> h, o;
-                f.process(steps.data(), steps.size() / 2, rate, h, o);
+                f.process(snaps.data(), snaps.size() / 2, rate, h, o);
                 double e = 0;
                 for (size_t i = rate * 2; i < o.size(); ++i) e += double(o[i]) * o[i];
                 const float r = float(std::sqrt(e / double(o.size() - rate * 2)));
-                CHECK(r < 0.6f * rS, "volumen del parlante del perfil (%.3f vs %.3f)", r, rS);
+                CHECK(r < 0.6f * rK, "volumen del parlante del perfil (%.3f vs %.3f)", r, rK);
             }
         }
         // Volumen de Windows al 20%: la misma escena se siente parecida (normalización)
