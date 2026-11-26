@@ -2011,6 +2011,8 @@ static int cmdVirtual(const Options& opt) {
     DWORD simPid = 0, simFailedPid = 0;
 #ifdef DS5_WITH_OPUS
     unsigned simHitsAtStart = 0, simUnderrunsAtStart = 0, simDropsAtStart = 0;   // para el resumen
+    unsigned simHitsLastMin = 0, simGapsLastMin = 0, simDropsLastMin = 0;          // y cada minuto
+    DWORD simRouteMs = 0, simReportMs = 0;
 #endif
     std::string simSource;
     std::vector<float> simHap, simSpk;
@@ -2062,9 +2064,10 @@ static int cmdVirtual(const Options& opt) {
         // entrecortarse
         speakerFifo.clear();
         speakerFifo.setCushion(3);
-        simHitsAtStart = simFx.speakerHits();
-        simUnderrunsAtStart = speakerFifo.underruns();
-        simDropsAtStart = speakerFifo.drops();
+        simHitsAtStart = simHitsLastMin = simFx.speakerHits();
+        simUnderrunsAtStart = simGapsLastMin = speakerFifo.underruns();
+        simDropsAtStart = simDropsLastMin = speakerFifo.drops();
+        simRouteMs = simReportMs = GetTickCount();
 #endif
         simActive = true;
         if (procCap.start(simPid, simFeed)) {
@@ -2124,6 +2127,26 @@ static int cmdVirtual(const Options& opt) {
             if (imp && !wasImported) importedSince = GetTickCount();
             wasImported = imp;
         }
+#ifdef DS5_WITH_OPUS
+        // Parlante simulado: volver a mandar el volumen y la salida al parlante cada 5 s (si el
+        // mando los pierde, por un corte de Bluetooth o un cambio de estado, el parlante quedaba
+        // mudo el resto del juego) y anotar cada minuto cómo viene
+        if (simRunning && simSpkOn && !btLost) {
+            const DWORD now = GetTickCount();
+            if (now - simRouteMs >= 5000 && !voiceQ.active()) { routeSpeaker(); simRouteMs = now; }
+            if (now - simReportMs >= 60000) {
+                simReportMs = now;
+                const unsigned hits = simFx.speakerHits(), gaps = speakerFifo.underruns(), drops = speakerFifo.drops();
+                std::lock_guard<std::mutex> lg(logMu);
+                std::printf(tr("\n[parlante simulado] último minuto: %u chasquidos, %u cortes, %u descartes.\n",
+                               "\n[simulated speaker] last minute: %u snaps, %u gaps, %u drops.\n"),
+                            hits - simHitsLastMin, gaps - simGapsLastMin, drops - simDropsLastMin);
+                simHitsLastMin = hits;
+                simGapsLastMin = gaps;
+                simDropsLastMin = drops;
+            }
+        }
+#endif
         if (tick % 4 == 2 && restoreAudioOn) {
             bool watching = importedSince && GetTickCount() - importedSince < 60000;
             std::wstring done = audioGuard.poll(watching);
@@ -2463,7 +2486,9 @@ int wmain(int argc, wchar_t** wargv) {
     if (cmd == "virtual") {
         if (!opt.logFile.empty()) {
             FILE* f = _wfreopen(widen(opt.logFile).c_str(), L"w", stdout);
-            if (f) { setvbuf(stdout, nullptr, _IOLBF, 1024); std::printf(tr("ds5haptics en segundo plano\n", "ds5haptics in the background\n")); }
+            // Sin búfer: en Windows "_IOLBF" guarda de a 1 KB y las últimas líneas (el resumen al
+            // cerrar el juego, por ejemplo) no llegaban al archivo
+            if (f) { setvbuf(stdout, nullptr, _IONBF, 0); std::printf(tr("ds5haptics en segundo plano\n", "ds5haptics in the background\n")); }
         }
         return cmdVirtual(opt);
     }

@@ -130,8 +130,10 @@ paquetes de 10 ms (a veces de a dos) y el mando pide bloques de 10,7 ms: el parl
 colchón para no entrecortarse
 (antes rellenaba con silencio a mitad de bloque varias veces por segundo, y eso sonaba
 entrecortado, con chasquidos).
-Al cerrar el juego, el registro dice cuántos chasquidos sonaron y cuántos cortes hubo por falta
-de sonido: si hay cortes, avisá.
+Mientras juega, cada minuto el registro anota cuántos chasquidos sonaron y cuántos cortes hubo
+por falta de sonido, y al cerrar el juego, el total: si hay cortes, avisá. Cada 5 s se vuelve a
+mandar al mando el volumen y la salida del parlante, por si los pierde (un corte de Bluetooth,
+por ejemplo). Si algún cálculo se vuelve inválido, el separador vuelve a empezar solo.
 
 ### Mods hechos para DSX (experimental)
 

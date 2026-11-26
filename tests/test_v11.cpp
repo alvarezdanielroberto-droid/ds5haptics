@@ -5,6 +5,7 @@
 #include "sim_fx.h"
 
 #include <cmath>
+#include <limits>
 #include <cstdio>
 #include <cstring>
 #include <vector>
@@ -224,6 +225,20 @@ int main() {
             CHECK(hMS == 0 && rMS < 0.005f, "pisadas con música: no pasan (%u, %.3f)", hMS, rMS);
             CHECK(hMK >= 5 && rMK > 0.01f, "chasquidos con música: pasan (%u, %.3f)", hMK, rMK);
             CHECK(hAll >= 5 && hAll <= 7, "voz + pisadas + chasquidos: solo los chasquidos (%u)", hAll);
+            // Datos inválidos o sonido saturado en el medio: después sigue andando
+            {
+                ds5::PercussiveSpeaker p;
+                p.configure(5, 1.0f);
+                std::vector<float> o, bad(rate * 2 * 2);
+                for (size_t i = 0; i < bad.size(); ++i)
+                    bad[i] = i < 2000 ? std::numeric_limits<float>::quiet_NaN() : (i % 4 < 2 ? 1.0f : -1.0f);
+                p.process(bad.data(), bad.size() / 2, o);
+                const unsigned before = p.hits();
+                p.process(mk.data(), mk.size() / 2, o);
+                bool finite = true;
+                for (float v : o) finite = finite && std::isfinite(v);
+                CHECK(finite && p.hits() - before >= 3, "después de datos inválidos y 2 s saturados, a los pocos segundos sigue andando (%u)", p.hits() - before);
+            }
             // Ganancia (volumen del parlante del perfil): más volumen, más señal
             {
                 ds5::SimFx::Config c2 = c;

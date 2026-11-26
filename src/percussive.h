@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <cmath>
 #include <complex>
+#include <iterator>
 #include <cstddef>
 #include <vector>
 
@@ -90,6 +91,11 @@ public:
         ref_ = kRefMin;
         gate_ = 0;
         open_ = false;
+        hold_ = 0;
+        fracBg_ = 0.1f;
+        powAvg_ = 0;
+        hpZ_ = hopPeak_ = hopPow_ = 0;
+        std::fill(std::begin(peaks_), std::end(peaks_), 0.0f);
     }
 
     // sensibilidad 1..10 (10 = deja pasar más); ganancia final (como el volumen del parlante)
@@ -99,6 +105,7 @@ public:
     }
 
     unsigned hits() const { return hits_; }
+    unsigned resets() const { return resets_; }
     float lastPeriodicity() const { return periodic_; }
     float lastPercussiveFraction() const { return percFrac_; }
     float lastBurstRatio() const { return burstRatio_; }
@@ -109,10 +116,12 @@ public:
     // Entrada estéreo 48 kHz intercalada; agrega a 'out' la misma cantidad de frames.
     void process(const float* st, size_t frames, std::vector<float>& out) {
         for (size_t i = 0; i < frames; ++i) {
-            in_[size_t(fill_) * 2] = st[i * 2];
-            in_[size_t(fill_) * 2 + 1] = st[i * 2 + 1];
+            const float l = std::isfinite(st[i * 2]) ? st[i * 2] : 0.0f;   // nada inválido adentro
+            const float r = std::isfinite(st[i * 2 + 1]) ? st[i * 2 + 1] : 0.0f;
+            in_[size_t(fill_) * 2] = l;
+            in_[size_t(fill_) * 2 + 1] = r;
             {   // pico de la parte aguda (> ~1,5 kHz) y volumen promedio, para medir "chasquidos"
-                const float m = 0.5f * (st[i * 2] + st[i * 2 + 1]);
+                const float m = 0.5f * (l + r);
                 hpZ_ += 0.18f * (m - hpZ_);
                 const float h = m - hpZ_;
                 hopPeak_ = std::max(hopPeak_, std::fabs(h));
@@ -202,7 +211,9 @@ private:
         peaks_[size_t(frames_ % kPk)] = hopPeak_;
         {
             const float hp = hopPow_ / kHop;
-            if (hp > 1e-9f) powAvg_ += (hp - powAvg_) * kAvgSlow;
+            // sube despacio (~3 s) y baja rápido (~0,7 s): después de un tramo fuerte (una pelea,
+            // música alta) los chasquidos vuelven a pasar enseguida
+            if (hp > 1e-9f) powAvg_ += (hp - powAvg_) * (hp > powAvg_ ? kAvgSlow : kAvgFall);
         }
         hopPeak_ = 0;
         hopPow_ = 0;
@@ -211,6 +222,16 @@ private:
         ref_ = rms > ref_ ? rms : std::max(ref_ * kRefRel, kRefMin);
         ++frames_;
         if (frames_ <= kHist) return;   // hace falta el historial completo
+
+        // Seguro: si algún valor se volvió infinito o inválido, todo lo que se compara con él
+        // quedaría trabado (la compuerta no se abriría nunca más). Volver a empezar.
+        if (!std::isfinite(bg_) || !std::isfinite(powAvg_) || !std::isfinite(ref_) || !std::isfinite(fracBg_)) {
+            const unsigned h = hits_;
+            reset();
+            hits_ = h;
+            ++resets_;
+            return;
+        }
 
         // La ventana que sale ahora es la del medio del historial (kAhead ventanas atrás)
         const long center = frames_ - 1 - kAhead;
@@ -319,7 +340,8 @@ private:
     static constexpr float kBgDown = 0.30f;      // fondo: baja en ~30 ms...
     static constexpr float kBgUp = 0.0106f;      // ... y sube en ~1 s
     static constexpr float kGateRel = 0.21f;     // la compuerta se cierra en ~45 ms
-    static constexpr float kAvgSlow = 0.0036f;   // volumen promedio del juego: ~3 s
+    static constexpr float kAvgSlow = 0.0036f;   // volumen promedio del juego: sube en ~3 s...
+    static constexpr float kAvgFall = 0.0151f;   // ... y baja en ~0,7 s
     static constexpr float kRefRel = 0.99734f;   // volumen del juego: baja en ~4 s
     static constexpr int kHoldHops = 6;          // la compuerta queda abierta ~64 ms
 
@@ -339,7 +361,7 @@ private:
     float bg_ = 0, ref_ = kRefMin, gate_ = 0, sens_ = 5, gain_ = 1;
     bool open_ = false;
     int hold_ = 0;
-    unsigned hits_ = 0;
+    unsigned hits_ = 0, resets_ = 0;
 };
 
 }  // namespace ds5
