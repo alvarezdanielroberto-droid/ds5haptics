@@ -35,6 +35,10 @@ Configuración > Personalización > Barra de tareas > Otros iconos de la bandeja
   (dibujo y porcentaje), juego y perfil, conexión Bluetooth, háptica con su nivel, gatillos,
   parlante con el volumen que pide el juego, y la latencia que agrega ds5haptics.
 - **Clic derecho:** *Ver estadísticas*, *Iniciar con Windows* (con tilde) y *Salir*.
+- **Después de *Salir*:** se vuelve a abrir con el acceso directo **ds5haptics** del menú Inicio
+  (lo crea el programa la primera vez que corre) o con doble clic en `ds5haptics.exe`. Sin
+  argumentos, el programa arranca en segundo plano (como `ds5haptics background`) y, si ya
+  estaba corriendo, lo avisa. Desde una consola, sin argumentos muestra la ayuda.
 - Los juegos en pantalla completa "exclusiva" pueden tapar el cuadro; en modo ventana sin
   bordes (borderless) siempre se ve.
 - Nada depende del color: cada estado se dice con texto. `--no-tray` lo desactiva.

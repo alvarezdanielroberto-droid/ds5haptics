@@ -67,6 +67,7 @@ extern "C" {
 #include "process_capture.h"
 #include "dsx_protocol.h"
 #include "dsx_udp.h"
+#include "start_menu.h"
 
 using ds5::tr;
 using ds5::tra;
@@ -331,6 +332,7 @@ public:
         QueryPerformanceFrequency(&freq_);
         timeBeginPeriod(1);
         timer_ = CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+        hiRes_ = timer_ != nullptr;
         if (!timer_) timer_ = CreateWaitableTimerW(nullptr, TRUE, nullptr);
     }
     ~PreciseClock() { if (timer_) CloseHandle(timer_); timeEndPeriod(1); }
@@ -339,10 +341,11 @@ public:
     long long ticks(double sec) const { return (long long)(sec * double(freq_.QuadPart)); }
     double toMs(long long t) const { return t * 1000.0 / double(freq_.QuadPart); }
 
-    // Duerme con el temporizador hasta ~1 ms antes y termina con espera activa.
+    // Duerme con el temporizador hasta un poco antes y termina con espera activa (corta:
+    // con el temporizador de alta resolución alcanzan 0,3 ms; sin él, 1,2 ms).
     void sleepUntil(long long deadline) {
         long long rem = deadline - now();
-        long long margin = ticks(0.0012);
+        long long margin = ticks(hiRes_ ? 0.0003 : 0.0012);
         if (rem > margin && timer_) {
             LARGE_INTEGER due;
             due.QuadPart = -(long long)((rem - margin) * 10000000LL / freq_.QuadPart);  // 100 ns relativos
@@ -352,9 +355,21 @@ public:
         while (now() < deadline) YieldProcessor();
     }
 
+    // Duerme 'sec' segundos SIN espera activa (para revisar algo cada tanto sin gastar CPU).
+    // Con el temporizador de alta resolución se despierta con ~0,5 ms de error.
+    void nap(double sec) {
+        if (timer_) {
+            LARGE_INTEGER due;
+            due.QuadPart = -(long long)(sec * 1e7);   // 100 ns relativos
+            if (SetWaitableTimer(timer_, &due, 0, nullptr, nullptr, FALSE)) { WaitForSingleObject(timer_, INFINITE); return; }
+        }
+        Sleep(DWORD(sec * 1000 + 0.5) ? DWORD(sec * 1000 + 0.5) : 1);
+    }
+
 private:
     LARGE_INTEGER freq_{};
     HANDLE timer_ = nullptr;
+    bool hiRes_ = false;
 };
 
 // ------------------------------------------------------------- streaming ----
@@ -777,6 +792,23 @@ static int cmdBackground(const std::vector<std::string>& extra) {
     return 0;
 }
 
+// Sin argumentos y con doble clic (o desde el acceso directo del menú Inicio): si no está
+// corriendo, arranca en segundo plano; si ya corre, lo avisa. La ventana de consola se oculta.
+static int cmdOpen() {
+    HWND con = GetConsoleWindow();
+    if (con) ShowWindow(con, SW_HIDE);
+    HANDLE m = OpenMutexW(SYNCHRONIZE, FALSE, kInstanceMutexName);
+    if (m) {
+        CloseHandle(m);
+        MessageBoxW(nullptr,
+                    ds5::trw(L"ds5haptics ya est\u00e1 funcionando.\nBusc\u00e1 el \u00edcono del mando junto al reloj.",
+                             L"ds5haptics is already running.\nLook for the controller icon next to the clock."),
+                    L"ds5haptics", MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
+        return 0;
+    }
+    return cmdBackground({});
+}
+
 static int cmdStop() {
     HANDLE ev = OpenEventW(EVENT_MODIFY_STATE, FALSE, kStopEventName);
     if (!ev) { std::printf(tr("ds5haptics no está corriendo.\n", "ds5haptics is not running.\n")); return 1; }
@@ -1128,6 +1160,11 @@ static int cmdVirtual(const Options& opt) {
     WSADATA wsa;
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) { std::printf(tr("No se pudo iniciar Winsock.\n", "Could not start Winsock.\n")); return 1; }
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);   // para el audio de Windows (restaurar la salida)
+    // Acceso directo en el menú Inicio, para volver a abrirlo después de "Salir" sin reiniciar
+    if (!ds5::startmenu::exists() &&
+        ds5::startmenu::create(selfPath(), selfDir(), ds5::trw(L"DualSense por Bluetooth con háptica", L"DualSense over Bluetooth with haptics")))
+        std::printf(tr("Se creó el acceso directo \"ds5haptics\" en el menú Inicio (para volver a abrirlo).\n",
+                       "Created the \"ds5haptics\" shortcut in the Start menu (to open it again).\n"));
 
     // Opciones de [general] que se usan antes de cargar los perfiles (se actualizan al recargar)
     std::atomic<bool> voiceOn{true}, restoreAudioOn{true};
@@ -1661,8 +1698,9 @@ static int cmdVirtual(const Options& opt) {
         while (!g_stop) {
             int8_t chunk[ds5::kSampleBytes];
             if (opt.fast) {
-                // Modo directo: revisar cada 1 ms y mandar todo lo que ya esté completo
-                clk.sleepUntil(clk.now() + clk.ticks(0.001));
+                // Modo directo: revisar cada 1 ms y mandar todo lo que ya esté completo.
+                // (Antes esto era una espera activa: un núcleo del procesador al 100% todo el tiempo.)
+                clk.nap(0.001);
                 bool any = false;
                 const bool lite = liteNow();
                 const size_t nb = lite ? liteBytes : nbytes;
@@ -2382,7 +2420,13 @@ int wmain(int argc, wchar_t** wargv) {
         else if (a == "-h" || a == "--help") { usage(); return 0; }
         else pos.push_back(a);
     }
-    if (pos.empty()) { usage(); return 0; }
+    if (pos.empty()) {
+        // ¿Doble clic? Entonces la consola es solo nuestra (desde cmd o PowerShell hay más procesos)
+        DWORD ids[4];
+        if (GetConsoleProcessList(ids, 4) <= 1) return cmdOpen();
+        usage();
+        return 0;
+    }
 
     const std::string& cmd = pos[0];
     auto num = [&](size_t i, double def) { return pos.size() > i ? std::atof(pos[i].c_str()) : def; };

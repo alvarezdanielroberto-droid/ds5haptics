@@ -147,3 +147,5 @@ if ($needReboot) {
 }
 Write-Host (T "Perfiles por juego: $dest\perfiles.bat    Quitar todo: $dest\desinstalar.bat" `
               "Per-game profiles: $dest\perfiles.bat    Remove everything: $dest\desinstalar.bat")
+Write-Host (T 'Si lo cerraste con "Salir", se vuelve a abrir desde el menú Inicio: ds5haptics.' `
+              'If you closed it with "Exit", open it again from the Start menu: ds5haptics.')

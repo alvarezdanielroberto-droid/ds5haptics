@@ -8,10 +8,11 @@ set "EXE=C:\ds5haptics\ds5haptics.exe"
 if not exist "%EXE%" set "EXE=%~dp0ds5haptics.exe"
 "%EXE%" stop
 "%EXE%" autostart off
+del "%APPDATA%\Microsoft\Windows\Start Menu\Programs\ds5haptics.lnk" >nul 2>&1
 timeout /t 2 >nul
 echo.
-echo Se detuvo el programa y se quito el inicio con Windows.
-echo The program was stopped and removed from Windows startup.
+echo Se detuvo el programa y se quito el inicio con Windows y el acceso del menu Inicio.
+echo The program was stopped and removed from Windows startup and the Start menu.
 echo.
 echo Para quitar los drivers, desinstala "USBip" y "HidHide" desde
 echo Configuracion ^> Aplicaciones ^> Aplicaciones instaladas.
