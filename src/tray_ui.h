@@ -53,6 +53,9 @@ struct Stats {
     float hapticGain = 1;
     double ownLatencyMs = -1, writeMs = -1;
     unsigned gaps = 0;
+    // Ahorro de batería: % de envíos al mando evitados porque todo estaba en silencio
+    bool saverOn = true;
+    int savedPct = 0;
     // Parlante
     bool speakerEnabled = false, speakerStreaming = false, volumeForced = false;
     int gameVolume = -1;
@@ -306,7 +309,7 @@ private:
                      width, height, SWP_NOACTIVATE);
     }
 
-    static constexpr int kLines = 8;   // filas debajo del título
+    static constexpr int kLines = 9;   // filas debajo del título
     int lineH() const { return px(21); }
 
     void paintOverlay(HDC target, const RECT& rc) {
@@ -443,6 +446,9 @@ private:
             }
             row(trw(L"Latencia", L"Latency"), w(lat));
         }
+        row(trw(L"Ahorro", L"Saver"),
+            s.saverOn ? w(std::to_string(s.savedPct) + tr("% de envíos evitados (silencio)", "% of sends skipped (silence)"))
+                      : trw(L"desactivado (ahorro_bateria = no)", L"off (battery_saver = no)"));
 
         SelectObject(dc, fontSmall_);
         SetTextColor(dc, dim);

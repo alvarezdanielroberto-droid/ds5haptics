@@ -70,6 +70,13 @@ Windows and forwards everything the game sends to the real controller over Bluet
   keyboard shortcut with `stats_hotkey`, e.g. `ctrl+alt+d`). Right click on the icon: *Show stats*,
   *Start with Windows* and *Exit*. The PS button stays free for the game. Turn the mic button off
   with `mic_button_stats = no`.
+- **Battery:** while there is no haptics or sound, ds5haptics stops sending to the controller so
+  its Bluetooth radio can rest (`battery_saver`, on by default; the stats show how much it saved).
+  `light_brightness = 30` dims the light bar (0 turns it off). Lowering the profile's `haptics`
+  and `speaker` levels also helps.
+- **Screen light:** with `screen_light = yes`, while a game is open the light bar takes the color
+  that dominates the screen (red scene, red light; blue menu, blue light) and, with
+  `light_rhythm = yes`, pulses with the game's hits.
 - **Closed it with *Exit*?** Open it again from the **Start menu > ds5haptics** (or double click
   `C:\ds5haptics\ds5haptics.exe`). No need to restart the PC.
 - **Profiles:** `C:\ds5haptics\perfiles.bat` opens `ds5haptics.ini`:
@@ -88,7 +95,7 @@ Windows and forwards everything the game sends to the real controller over Bluet
 - **Simulated haptics** (PS4/Xbox mode): on/off with `simulated_haptics`, and `sensitivity = 1` to `10`
   for how easily hits go full strength, per game. It uses the game's own sound only on recent
   Windows 10 and 11; on older versions it uses all PC sound. `simulated_speaker = yes` also sends
-  high-pitched sounds to the controller speaker (experimental, off by default).
+  high-pitched sounds to the controller speaker (experimental, off by default). With `speaker_voices = yes`, voices and ambience play too.
 - **Spoken notices:** louder or softer with `voice_volume = 1` to `10` (default 2); off with `voice = no`.
 - **Log:** `C:\ds5haptics\ds5haptics.log` shows what's going on.
 
@@ -200,6 +207,13 @@ y el parlante, en PC, solo funcionan por cable. ds5haptics crea en Windows un **
   podés poner un atajo de teclado con `atajo_estadisticas`, ej. `ctrl+alt+d`). Clic derecho en el
   ícono: *Ver estadísticas*, *Iniciar con Windows* y *Salir*. El botón PS queda libre para el juego.
   El botón de micrófono se desactiva con `boton_microfono_estadisticas = no`.
+- **Batería:** mientras no hay háptica ni sonido, ds5haptics deja de mandarle datos al mando para
+  que su radio Bluetooth descanse (`ahorro_bateria`, activado por defecto; las estadísticas muestran
+  cuánto ahorró). `brillo_luz = 30` baja el brillo de la barra de luz (0 la apaga). Bajar `haptica`
+  y `parlante` en el perfil del juego también ayuda.
+- **Luz según la pantalla:** con `luz_pantalla = si`, mientras hay un juego abierto la barra de luz
+  toma el color que domina en la pantalla (escena roja, luz roja; menú azul, luz azul) y, con
+  `luz_ritmo = si`, late con los golpes del juego.
 - **¿Lo cerraste con *Salir*?** Se vuelve a abrir desde el **menú Inicio > ds5haptics** (o con doble
   clic en `C:\ds5haptics\ds5haptics.exe`). No hace falta reiniciar la PC.
 - **Perfiles:** `C:\ds5haptics\perfiles.bat` abre `ds5haptics.ini`. Ejemplo:
@@ -218,7 +232,8 @@ y el parlante, en PC, solo funcionan por cable. ds5haptics crea en Windows un **
 - **Háptica simulada** (modo PS4/Xbox): se activa o apaga con `haptica_simulada`, y
   `sensibilidad = 1` a `10` define qué tan fácil un golpe va a fondo, por juego. Usa solo el sonido
   del juego en Windows 10 reciente y 11; en versiones más viejas, todo el sonido de la PC.
-  `parlante_simulado = si` manda además los sonidos agudos al parlante (experimental, apagado por defecto).
+  `parlante_simulado = si` manda además los sonidos agudos al parlante (experimental, apagado por defecto). Con
+  `parlante_voces = si` salen también las voces y el ambiente.
 - **Avisos hablados:** más fuerte o más bajo con `volumen_voz = 1` a `10` (por defecto 2); se apagan con `voz = no`.
 - **Registro:** `C:\ds5haptics\ds5haptics.log` muestra todo lo que pasa: qué juego detectó,
   qué perfil aplicó, la batería y los errores.

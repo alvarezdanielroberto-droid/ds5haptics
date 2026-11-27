@@ -107,6 +107,40 @@ pulsando**. Vuelve a la normalidad al enchufarlo. El umbral se cambia con `bater
 en `[general]` (`0` lo desactiva). El mando informa la batería en pasos de 10%.
 `ds5haptics battery` muestra el nivel actual, y cada cambio queda anotado en `ds5haptics.log`.
 
+### Ahorro de batería
+
+Lo que más gasta la batería del mando es la háptica, los gatillos, el parlante, la barra de luz y
+la radio Bluetooth. Con un juego abierto, Windows manda audio todo el tiempo (aunque sea
+silencio), y ds5haptics mandaba un reporte 0x36 (398 bytes) cada 10,7 ms: la radio del mando no
+paraba nunca.
+
+- `ahorro_bateria = si` (por defecto): si la háptica y el parlante están en silencio desde hace
+  ~0,3 s, no se manda nada. Con el primer sonido se vuelve a mandar enseguida. El cuadro de
+  estadísticas muestra el % de envíos evitados.
+- `brillo_luz = 0 a 100`: escala todos los colores de la barra de luz (los del juego, los de DSX
+  y los del modo). 0 la apaga.
+
+Cuánto dura más la batería depende del juego: en uno con mucha háptica todo el tiempo, el ahorro
+es poco; en uno con silencios, menús o diálogos, más.
+
+### Luz según la pantalla
+
+Con `luz_pantalla = si` y un juego abierto (`src/screen_capture.h`, `src/ambient_color.h`):
+
+1. Unas 15 veces por segundo se toma la pantalla donde está el juego con la duplicación de
+   escritorio de DXGI (la de los programas de grabación). La placa de video la achica a ~64 px
+   de ancho (mipmaps): se leen unos miles de píxeles y casi no gasta CPU.
+2. Se agrupan los píxeles por tono (24 grupos); cada uno pesa más cuanto más saturado y
+   brillante es (el negro, los grises y el texto blanco casi no cuentan). Gana el grupo con más
+   peso. Una pantalla casi sin color da un blanco tenue; una oscura, luz tenue.
+3. El color cambia suave (~150 ms) y, con `luz_ritmo = si`, el brillo late con la háptica del
+   juego: sube con cada golpe y baja en ~250 ms.
+4. Mientras está activa, los colores que manda el juego o un mod de DSX no se aplican. Al cerrar
+   el juego vuelve el color de siempre. `brillo_luz` también se aplica.
+
+No ve contenido protegido (videos con DRM salen negros). Si cambia la resolución o el juego
+pasa a otro monitor, la captura se vuelve a abrir sola.
+
 ### Mods hechos para DSX (experimental)
 
 Algunos mods de la comunidad (por ejemplo, uno para RDR2) mandan a DSX por UDP, a

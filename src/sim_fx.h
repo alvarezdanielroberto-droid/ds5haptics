@@ -36,6 +36,7 @@ public:
         int sensitivity = 5;    // 1..10
         float hapticGain = 1.0f;
         float speakerGain = 1.0f;
+        bool speakerVoices = false;   // el parlante deja pasar también las voces (desde ~300 Hz)
     };
 
     void configure(const Config& c) { cfg_ = c; }
@@ -54,6 +55,10 @@ public:
     // reemplaza el contenido de 'hap') y parlante estéreo a 48 kHz (se agrega a 'spk48').
     void process(const float* in, size_t frames, unsigned rate, std::vector<float>& hap, std::vector<float>& spk48) {
         if (rate != rate_) setup(rate);
+        {   // filtro de salida del parlante: > 1 kHz normal, > 300 Hz con las voces
+            const float hpo = cfg_.speakerVoices ? hpoVoices_ : hpoNormal_;
+            hpL1_.a = hpL2_.a = hpR1_.a = hpR2_.a = hpo;
+        }
         hap.resize(frames * 2);
         const float sens = float(std::clamp(cfg_.sensitivity, 1, 10));
         const float kTrans = 4.3f - 0.27f * sens;          // cuánto tiene que superar al promedio (1 -> 4,0x, 10 -> 1,6x)
@@ -139,7 +144,17 @@ public:
             // Así no se corta ni tiene que "arrancar" (sirenas, sonidos seguidos) y llega antes.
             const float al = hpL2_.run(hpL1_.run(l)), ar = hpR2_.run(hpR1_.run(r));
             float sl = 0, sr = 0;
-            if (cfg_.speaker) {
+            if (cfg_.speaker && cfg_.speakerVoices) {
+                // Modo voces: todo desde ~300 Hz (voces incluidas) a un volumen de fondo más alto,
+                // normalizado contra lo que sale (no contra los agudos), y los golpes agudos lo suben
+                eOut_ += (0.5f * (al * al + ar * ar) - eOut_) * outAvg_;
+                const float lvl = std::sqrt(eOut_);
+                refOut_ = lvl > refOut_ ? refOut_ + (lvl - refOut_) * spkRefAtk_ : std::max(refOut_ * relRef_, kRefOutMin);
+                float g = (kVoiceBase + (kSpkPeak - kVoiceBase) * spkGate_) * 0.5f / refOut_;
+                if (lvl < kFloorOut) g *= lvl / kFloorOut;   // silencio: no amplificar el soplido
+                sl = soft(al * g, cfg_.speakerGain);
+                sr = soft(ar * g, cfg_.speakerGain);
+            } else if (cfg_.speaker) {
                 // Nivel de referencia lento (~50 ms): normalizar sin que el volumen "bombee"
                 refSpk_ = ehFast > refSpk_ ? refSpk_ + (ehFast - refSpk_) * spkRefAtk_ : std::max(refSpk_ * relRef_, kRefSpk);
                 float g = (kSpkBase + (kSpkPeak - kSpkBase) * spkGate_) * 0.5f / refSpk_;
@@ -184,6 +199,9 @@ private:
         spkRefAtk_ = coef(50.0f);
         hpD1_.a = hpD2_.a = hpd;
         hpL1_.a = hpL2_.a = hpR1_.a = hpR2_.a = hpo;
+        hpoNormal_ = hpo;
+        hpoVoices_ = 1.0f - std::exp(-kTwoPi * 300.0f / fs);   // modo voces: > 300 Hz
+        outAvg_ = coef(10.0f);
         warmup_ = int(1.5f * fs);
         const float lpa = 1.0f - std::exp(-kTwoPi * 500.0f / fs);   // ~500 Hz, dos etapas
         lpL_.a = lpR_.a = lpL2_.a = lpR2_.a = lpa;
@@ -223,6 +241,9 @@ private:
     static constexpr float kRefSpk = 0.01f;    // amplificación máxima del parlante ~70x
     static constexpr float kSpkBase = 0.08f;   // volumen del parlante entre golpes (1 = a fondo)
     static constexpr float kSpkPeak = 0.8f;    // volumen con un sonido agudo (sin llegar a saturar)
+    static constexpr float kVoiceBase = 0.4f;  // modo voces: volumen de fondo (voces, ambiente)
+    static constexpr float kRefOutMin = 0.01f; // modo voces: amplificación máxima ~50x
+    static constexpr float kFloorOut = 0.002f; // modo voces: por debajo, silencio
     static constexpr float kHapOut = 0.5f;     // intensidad de la háptica simulada (1 = a fondo)
     static constexpr float kAmbient = 0.5f;    // háptica para lo suave
     static constexpr float kDrive = 1.8f;      // háptica en un golpe (satura suave: a fondo)
@@ -237,6 +258,7 @@ private:
     Hp hpD1_, hpD2_, hpL1_, hpL2_, hpR1_, hpR2_;
     float phFast_ = 0, phSlow_ = 0, refHi_ = kRefMinHi, spkGate_ = 0, spkRel_ = 0;
     float refSpk_ = kRefSpk, spkRefAtk_ = 0;
+    float hpoNormal_ = 0, hpoVoices_ = 0, eOut_ = 0, refOut_ = kRefOutMin, outAvg_ = 0;
     float pB_ = 0, phB_ = 0, bAvg_ = 0, bgHi_ = 0, bgDown_ = 0, bgUp_ = 0;
     int spkHold_ = 0, spkHoldLen_ = 0, brightRun_ = 0, brightNeed_ = 1;
     double step_ = 1.0, rpos_ = 0;

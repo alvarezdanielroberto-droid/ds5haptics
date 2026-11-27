@@ -50,6 +50,7 @@ struct ProfileValues {
     // Modo Xbox/PS4: háptica y parlante "simulados" a partir del sonido del juego
     bool simHaptics = true;
     bool simSpeaker = false;    // experimental: por ahora apagado por defecto
+    bool speakerVoices = false; // con el parlante simulado, también las voces (desde ~300 Hz)
     int sensitivity = 5;        // 1 (solo golpes muy fuertes) a 10 (casi todo)
 };
 
@@ -59,7 +60,7 @@ struct Profile {
     float hapticGain = -1;
     int maxSpeakerVolume = -1;
     int mode = -1;
-    int simHaptics = -1, simSpeaker = -1, sensitivity = -1;
+    int simHaptics = -1, simSpeaker = -1, sensitivity = -1, speakerVoices = -1;
 };
 
 struct ProfileSet {
@@ -71,6 +72,10 @@ struct ProfileSet {
     int language = -1;          // -1 = el de Windows, 0 = español, 1 = inglés, 2 = argento
     bool voice = true;          // avisos hablados por el parlante del mando
     float voiceVolume = 2.0f;   // volumen de los avisos (1 = como sale de Windows, hasta 10)
+    bool batterySaver = true;   // no mandar háptica ni parlante mientras todo es silencio
+    int lightBrightness = 100;  // brillo de la barra de luz, en % (0 = apagada)
+    bool screenLight = false;   // la barra de luz toma el color de la pantalla (con un juego abierto)
+    bool lightRhythm = true;    // ... y late con la háptica / el sonido del juego
     bool restoreAudio = true;   // si Windows elige al mando como salida/entrada de audio, volver a la anterior
     int autoWaitSec = 50;       // segundos que se espera antes del cambio automático de modo
     bool shake = true;          // agitar el mando cambia de modo
@@ -114,6 +119,7 @@ struct ProfileSet {
             if (g.mode >= 0) v.mode = g.mode;
             if (g.simHaptics >= 0) v.simHaptics = g.simHaptics != 0;
             if (g.simSpeaker >= 0) v.simSpeaker = g.simSpeaker != 0;
+            if (g.speakerVoices >= 0) v.speakerVoices = g.speakerVoices != 0;
             if (g.sensitivity >= 0) v.sensitivity = g.sensitivity;
             if (matched) *matched = g.match;
             break;   // el primero que coincide
@@ -192,12 +198,22 @@ struct ProfileSet {
                 if (inGeneral) ps.voice = parseBool(val);
             } else if (key == "volumen_voz" || key == "voice_volume") {
                 if (inGeneral) ps.voiceVolume = std::max(1.0f, parseGain(val));
+            } else if (key == "ahorro_bateria" || key == "ahorro_batería" || key == "ahorro_bater\xc3\xad" "a" || key == "battery_saver") {
+                if (inGeneral) ps.batterySaver = parseBool(val);
+            } else if (key == "brillo_luz" || key == "light_brightness") {
+                if (inGeneral) ps.lightBrightness = std::clamp(std::atoi(val.c_str()), 0, 100);
+            } else if (key == "luz_pantalla" || key == "screen_light") {
+                if (inGeneral) ps.screenLight = parseBool(val);
+            } else if (key == "luz_ritmo" || key == "light_rhythm") {
+                if (inGeneral) ps.lightRhythm = parseBool(val);
             } else if (key == "restaurar_audio" || key == "restore_audio") {
                 if (inGeneral) ps.restoreAudio = parseBool(val);
             } else if (key == "haptica_simulada" || key == "háptica_simulada" || key == "h\xc3\xa1ptica_simulada" || key == "simulated_haptics") {
                 if (inGeneral) ps.general.simHaptics = parseBool(val); else if (cur) cur->simHaptics = parseBool(val) ? 1 : 0;
             } else if (key == "parlante_simulado" || key == "simulated_speaker") {
                 if (inGeneral) ps.general.simSpeaker = parseBool(val); else if (cur) cur->simSpeaker = parseBool(val) ? 1 : 0;
+            } else if (key == "parlante_voces" || key == "speaker_voices") {
+                if (inGeneral) ps.general.speakerVoices = parseBool(val); else if (cur) cur->speakerVoices = parseBool(val) ? 1 : 0;
             } else if (key == "sensibilidad" || key == "sensitivity") {
                 int n = std::clamp(std::atoi(val.c_str()), 1, 10);
                 if (inGeneral) ps.general.sensitivity = n; else if (cur) cur->sensitivity = n;
@@ -278,6 +294,8 @@ static const char* const kDefaultIniEs =
     "#        haptica (suave para pisadas, lluvia, viento; fuerte para golpes y explosiones).\r\n"
     "# parlante_simulado = si/no (EXPERIMENTAL): en modo ps4/xbox, la parte aguda del sonido\r\n"
     "#        sale bajito por el parlante del mando y sube con mecanismos y chirridos.\r\n"
+    "# parlante_voces = si/no: con parlante_simulado, salen tambien las voces y el ambiente\r\n"
+    "#        (desde ~300 Hz, a volumen de fondo mas alto). Tambien por juego.\r\n"
     "# haptica_rapida = si/no (EXPERIMENTAL, por defecto no): paquetes solo de haptica en modo\r\n"
     "#        ps4/xbox. En algunos mandos la haptica se corta a los pocos segundos.\r\n"
     "# sensibilidad = 1 a 10: cuanto tiene que sonar algo para contar como golpe fuerte\r\n"
@@ -294,6 +312,13 @@ static const char* const kDefaultIniEs =
     "# atajo_estadisticas = atajo de teclado para las estadisticas (ej. ctrl+alt+d; vacio = ninguno).\r\n"
     "# mods_dsx = si/no (experimental): recibe los mods hechos para DSX (gatillos y luces que\r\n"
     "#        manda el mod por UDP 127.0.0.1:6969). No uses DSX a la vez. Solo en [general].\r\n"
+    "# ahorro_bateria = si/no: no le manda haptica ni sonido al mando mientras todo es silencio\r\n"
+    "#        (la radio Bluetooth del mando descansa). Solo en [general].\r\n"
+    "# brillo_luz = 0 a 100: brillo de la barra de luz en % (0 = apagada; gasta menos bateria).\r\n"
+    "#        Solo en [general].\r\n"
+    "# luz_pantalla = si/no: con un juego abierto, la barra de luz toma el color que domina en\r\n"
+    "#        la pantalla (rojo, azul, verde...). Solo en [general].\r\n"
+    "# luz_ritmo = si/no: con luz_pantalla, el brillo late con los golpes del juego.\r\n"
     "# modo_automatico = xbox / ps4: a que modo pasan esos juegos (ps4 = iconos de PlayStation\r\n"
     "#        en los juegos que admiten el mando de PS4). Solo en [general].\r\n"
     "# voz = si/no: avisos hablados por el parlante del mando (modo, bateria baja).\r\n"
@@ -322,6 +347,10 @@ static const char* const kDefaultIniEs =
     "boton_microfono_estadisticas = si\r\n"
     "atajo_estadisticas =\r\n"
     "mods_dsx = si\r\n"
+    "ahorro_bateria = si\r\n"
+    "brillo_luz = 100\r\n"
+    "luz_pantalla = no\r\n"
+    "luz_ritmo = si\r\n"
     "idioma = auto\r\n"
     "\r\n"
     "# Un perfil por juego: entre corchetes, parte del nombre del .exe del juego.\r\n"
@@ -345,6 +374,8 @@ static const char* const kDefaultIniEn =
     "#        footsteps, rain, wind; strong for hits and explosions).\r\n"
     "# simulated_speaker = yes/no (EXPERIMENTAL): in ps4/xbox mode, the high-pitched part of the\r\n"
     "#        sound plays softly on the controller speaker and gets loud for mechanisms and squeaks.\r\n"
+    "# speaker_voices = yes/no: with simulated_speaker, voices and ambience play too (from\r\n"
+    "#        ~300 Hz, at a louder background level). Also per game.\r\n"
     "# fast_haptics = yes/no (EXPERIMENTAL, default no): haptics-only packets in ps4/xbox mode.\r\n"
     "#        On some controllers haptics stop after a few seconds.\r\n"
     "# sensitivity = 1 to 10: how loud something must be to count as a hit\r\n"
@@ -361,6 +392,13 @@ static const char* const kDefaultIniEn =
     "# stats_hotkey = keyboard shortcut for the stats (e.g. ctrl+alt+d; empty = none).\r\n"
     "# dsx_mods = yes/no (experimental): accept mods made for DSX (the triggers and lights the\r\n"
     "#        mod sends over UDP 127.0.0.1:6969). Don't run DSX at the same time. Only in [general].\r\n"
+    "# battery_saver = yes/no: send no haptics or sound to the controller while everything is\r\n"
+    "#        silent (the controller's Bluetooth radio rests). Only in [general].\r\n"
+    "# light_brightness = 0 to 100: light bar brightness in % (0 = off; uses less battery).\r\n"
+    "#        Only in [general].\r\n"
+    "# screen_light = yes/no: while a game is open, the light bar takes the color that\r\n"
+    "#        dominates the screen (red, blue, green...). Only in [general].\r\n"
+    "# light_rhythm = yes/no: with screen_light, the brightness pulses with the game's hits.\r\n"
     "# auto_mode = xbox / ps4: which mode those games switch to (ps4 = PlayStation icons in\r\n"
     "#        games that support the PS4 controller). Only in [general].\r\n"
     "# voice = yes/no: spoken notices through the controller speaker (mode, low battery).\r\n"
@@ -389,6 +427,10 @@ static const char* const kDefaultIniEn =
     "mic_button_stats = yes\r\n"
     "stats_hotkey =\r\n"
     "dsx_mods = yes\r\n"
+    "battery_saver = yes\r\n"
+    "light_brightness = 100\r\n"
+    "screen_light = no\r\n"
+    "light_rhythm = yes\r\n"
     "language = auto\r\n"
     "\r\n"
     "# One profile per game: in brackets, part of the game's .exe name.\r\n"
@@ -475,6 +517,24 @@ static const char* const kIniUpgradeBlock5 =
     "boton_microfono_estadisticas = si\r\n"
     "atajo_estadisticas =\r\n"
     "mods_dsx = si\r\n";
+
+// Sexta actualización (v1.2): ahorro de batería, brillo de la luz y luz según la pantalla
+static const char* const kIniUpgradeBlock6 =
+    "\r\n"
+    "# --- Opciones nuevas / New options (v1.2) ---\r\n"
+    "# ahorro_bateria = si/no: no le manda haptica ni sonido al mando mientras todo es silencio.\r\n"
+    "# brillo_luz = 0 a 100: brillo de la barra de luz en % (0 = apagada; gasta menos bateria).\r\n"
+    "# luz_pantalla = si/no: con un juego abierto, la barra de luz toma el color de la pantalla.\r\n"
+    "# luz_ritmo = si/no: con luz_pantalla, el brillo late con los golpes del juego.\r\n"
+    "# parlante_voces = si/no: con parlante_simulado, por el parlante salen tambien las voces\r\n"
+    "#        y el ambiente (no solo los agudos). Tambien por juego.\r\n"
+    "# English: battery_saver / light_brightness / screen_light / light_rhythm / speaker_voices.\r\n"
+    "[general]\r\n"
+    "ahorro_bateria = si\r\n"
+    "brillo_luz = 100\r\n"
+    "luz_pantalla = no\r\n"
+    "luz_ritmo = si\r\n"
+    "parlante_voces = no\r\n";
 
 // Modo elegido agitando el mando: se anota en el perfil del juego. 'section' es el nombre
 // del perfil que ya coincide con el juego (si hay) o el del .exe; la sección repetida se
