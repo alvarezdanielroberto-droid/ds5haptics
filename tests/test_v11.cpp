@@ -224,6 +224,10 @@ int main() {
             CHECK(r.batterySaver && r.lightBrightness == 100, "battery_saver / light_brightness, con límite");
             auto u = ds5::ProfileSet::parse(std::string(ds5::kDefaultIni) + ds5::kIniUpgradeBlock6);
             CHECK(u.batterySaver && u.lightBrightness == 100, "bloque de actualización v1.2");
+            CHECK(!d.screenLight && d.lightRhythm && !u.screenLight && u.lightRhythm, "luz según la pantalla: apagada por defecto");
+            auto v = ds5::ProfileSet::parse("[general]\nluz_pantalla = si\nluz_ritmo = no\n");
+            auto x = ds5::ProfileSet::parse("[general]\nscreen_light = yes\n");
+            CHECK(v.screenLight && !v.lightRhythm && x.screenLight && x.lightRhythm, "luz_pantalla / luz_ritmo");
         }
         auto v = p.resolve("mafia3definitiveedition.exe");
         CHECK(!v.simHaptics && !v.simSpeaker && v.sensitivity == 8 && v.mode == ds5::kModeXbox, "perfil por juego");

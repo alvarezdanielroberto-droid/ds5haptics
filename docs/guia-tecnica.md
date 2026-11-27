@@ -123,6 +123,24 @@ paraba nunca.
 Cuánto dura más la batería depende del juego: en uno con mucha háptica todo el tiempo, el ahorro
 es poco; en uno con silencios, menús o diálogos, más.
 
+### Luz según la pantalla
+
+Con `luz_pantalla = si` y un juego abierto (`src/screen_capture.h`, `src/ambient_color.h`):
+
+1. Unas 15 veces por segundo se toma la pantalla donde está el juego con la duplicación de
+   escritorio de DXGI (la de los programas de grabación). La placa de video la achica a ~64 px
+   de ancho (mipmaps): se leen unos miles de píxeles y casi no gasta CPU.
+2. Se agrupan los píxeles por tono (24 grupos); cada uno pesa más cuanto más saturado y
+   brillante es (el negro, los grises y el texto blanco casi no cuentan). Gana el grupo con más
+   peso. Una pantalla casi sin color da un blanco tenue; una oscura, luz tenue.
+3. El color cambia suave (~150 ms) y, con `luz_ritmo = si`, el brillo late con la háptica del
+   juego: sube con cada golpe y baja en ~250 ms.
+4. Mientras está activa, los colores que manda el juego o un mod de DSX no se aplican. Al cerrar
+   el juego vuelve el color de siempre. `brillo_luz` también se aplica.
+
+No ve contenido protegido (videos con DRM salen negros). Si cambia la resolución o el juego
+pasa a otro monitor, la captura se vuelve a abrir sola.
+
 ### Mods hechos para DSX (experimental)
 
 Algunos mods de la comunidad (por ejemplo, uno para RDR2) mandan a DSX por UDP, a

@@ -73,6 +73,8 @@ struct ProfileSet {
     float voiceVolume = 2.0f;   // volumen de los avisos (1 = como sale de Windows, hasta 10)
     bool batterySaver = true;   // no mandar háptica ni parlante mientras todo es silencio
     int lightBrightness = 100;  // brillo de la barra de luz, en % (0 = apagada)
+    bool screenLight = false;   // la barra de luz toma el color de la pantalla (con un juego abierto)
+    bool lightRhythm = true;    // ... y late con la háptica / el sonido del juego
     bool restoreAudio = true;   // si Windows elige al mando como salida/entrada de audio, volver a la anterior
     int autoWaitSec = 50;       // segundos que se espera antes del cambio automático de modo
     bool shake = true;          // agitar el mando cambia de modo
@@ -198,6 +200,10 @@ struct ProfileSet {
                 if (inGeneral) ps.batterySaver = parseBool(val);
             } else if (key == "brillo_luz" || key == "light_brightness") {
                 if (inGeneral) ps.lightBrightness = std::clamp(std::atoi(val.c_str()), 0, 100);
+            } else if (key == "luz_pantalla" || key == "screen_light") {
+                if (inGeneral) ps.screenLight = parseBool(val);
+            } else if (key == "luz_ritmo" || key == "light_rhythm") {
+                if (inGeneral) ps.lightRhythm = parseBool(val);
             } else if (key == "restaurar_audio" || key == "restore_audio") {
                 if (inGeneral) ps.restoreAudio = parseBool(val);
             } else if (key == "haptica_simulada" || key == "háptica_simulada" || key == "h\xc3\xa1ptica_simulada" || key == "simulated_haptics") {
@@ -304,6 +310,9 @@ static const char* const kDefaultIniEs =
     "#        (la radio Bluetooth del mando descansa). Solo en [general].\r\n"
     "# brillo_luz = 0 a 100: brillo de la barra de luz en % (0 = apagada; gasta menos bateria).\r\n"
     "#        Solo en [general].\r\n"
+    "# luz_pantalla = si/no: con un juego abierto, la barra de luz toma el color que domina en\r\n"
+    "#        la pantalla (rojo, azul, verde...). Solo en [general].\r\n"
+    "# luz_ritmo = si/no: con luz_pantalla, el brillo late con los golpes del juego.\r\n"
     "# modo_automatico = xbox / ps4: a que modo pasan esos juegos (ps4 = iconos de PlayStation\r\n"
     "#        en los juegos que admiten el mando de PS4). Solo en [general].\r\n"
     "# voz = si/no: avisos hablados por el parlante del mando (modo, bateria baja).\r\n"
@@ -334,6 +343,8 @@ static const char* const kDefaultIniEs =
     "mods_dsx = si\r\n"
     "ahorro_bateria = si\r\n"
     "brillo_luz = 100\r\n"
+    "luz_pantalla = no\r\n"
+    "luz_ritmo = si\r\n"
     "idioma = auto\r\n"
     "\r\n"
     "# Un perfil por juego: entre corchetes, parte del nombre del .exe del juego.\r\n"
@@ -377,6 +388,9 @@ static const char* const kDefaultIniEn =
     "#        silent (the controller's Bluetooth radio rests). Only in [general].\r\n"
     "# light_brightness = 0 to 100: light bar brightness in % (0 = off; uses less battery).\r\n"
     "#        Only in [general].\r\n"
+    "# screen_light = yes/no: while a game is open, the light bar takes the color that\r\n"
+    "#        dominates the screen (red, blue, green...). Only in [general].\r\n"
+    "# light_rhythm = yes/no: with screen_light, the brightness pulses with the game's hits.\r\n"
     "# auto_mode = xbox / ps4: which mode those games switch to (ps4 = PlayStation icons in\r\n"
     "#        games that support the PS4 controller). Only in [general].\r\n"
     "# voice = yes/no: spoken notices through the controller speaker (mode, low battery).\r\n"
@@ -407,6 +421,8 @@ static const char* const kDefaultIniEn =
     "dsx_mods = yes\r\n"
     "battery_saver = yes\r\n"
     "light_brightness = 100\r\n"
+    "screen_light = no\r\n"
+    "light_rhythm = yes\r\n"
     "language = auto\r\n"
     "\r\n"
     "# One profile per game: in brackets, part of the game's .exe name.\r\n"
@@ -494,16 +510,20 @@ static const char* const kIniUpgradeBlock5 =
     "atajo_estadisticas =\r\n"
     "mods_dsx = si\r\n";
 
-// Sexta actualización (v1.2): ahorro de batería y brillo de la luz
+// Sexta actualización (v1.2): ahorro de batería, brillo de la luz y luz según la pantalla
 static const char* const kIniUpgradeBlock6 =
     "\r\n"
     "# --- Opciones nuevas / New options (v1.2) ---\r\n"
     "# ahorro_bateria = si/no: no le manda haptica ni sonido al mando mientras todo es silencio.\r\n"
     "# brillo_luz = 0 a 100: brillo de la barra de luz en % (0 = apagada; gasta menos bateria).\r\n"
-    "# English: battery_saver / light_brightness.\r\n"
+    "# luz_pantalla = si/no: con un juego abierto, la barra de luz toma el color de la pantalla.\r\n"
+    "# luz_ritmo = si/no: con luz_pantalla, el brillo late con los golpes del juego.\r\n"
+    "# English: battery_saver / light_brightness / screen_light / light_rhythm.\r\n"
     "[general]\r\n"
     "ahorro_bateria = si\r\n"
-    "brillo_luz = 100\r\n";
+    "brillo_luz = 100\r\n"
+    "luz_pantalla = no\r\n"
+    "luz_ritmo = si\r\n";
 
 // Modo elegido agitando el mando: se anota en el perfil del juego. 'section' es el nombre
 // del perfil que ya coincide con el juego (si hay) o el del .exe; la sección repetida se

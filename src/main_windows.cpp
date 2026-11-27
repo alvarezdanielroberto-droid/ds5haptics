@@ -67,6 +67,8 @@ extern "C" {
 #include "process_capture.h"
 #include "dsx_protocol.h"
 #include "dsx_udp.h"
+#include "ambient_color.h"
+#include "screen_capture.h"
 #include "start_menu.h"
 
 using ds5::tr;
@@ -1175,6 +1177,9 @@ static int cmdVirtual(const Options& opt) {
 
     // Opciones de [general] que se usan antes de cargar los perfiles (se actualizan al recargar)
     std::atomic<bool> voiceOn{true}, restoreAudioOn{true}, saverOn{true};
+    // Luz según la pantalla: el hilo de la luz la aplica mientras ambientWanted (juego abierto)
+    std::atomic<bool> ambientWanted{false}, ambientActive{false}, lightRhythmOn{true};
+    std::atomic<float> lightPulse{0.0f};   // intensidad de la háptica del momento (para el ritmo)
     std::atomic<float> voiceVolume{2.0f};
     std::atomic<bool> shakeOn{true}, micStatsOn{true}, dsxOn{true};
     std::string statsHotkey;
@@ -1274,9 +1279,16 @@ static int cmdVirtual(const Options& opt) {
     std::mutex histMu;
     std::map<uint32_t, std::pair<uint64_t, std::vector<uint8_t>>> outByKind;
     uint64_t outCounter = 0;
-    auto forwardOutput = [&](const uint8_t* usb, size_t len) -> bool {
+    // own = color propio de la luz según la pantalla (no se descarta)
+    auto forwardOutput = [&](const uint8_t* usb, size_t len, bool own = false) -> bool {
         uint8_t bt[ds5::kMainReportSize];
         if (!ds5::usbOutputToBt(usb, len, outSeq++, bt)) return false;
+        // Con la luz según la pantalla, los colores que manda el juego (o un mod) no se aplican
+        if (!own && ambientActive && (bt[4] & 0x04)) {
+            bt[4] &= uint8_t(~0x04);
+            uint32_t crc = ds5::crc32_bt(bt, ds5::kMainReportSize - 4);
+            bt[74] = uint8_t(crc); bt[75] = uint8_t(crc >> 8); bt[76] = uint8_t(crc >> 16); bt[77] = uint8_t(crc >> 24);
+        }
         // valid_flag0 bit 0x80 = el reporte trae el volumen del parlante (byte 6 por USB)
         if (len > 6 && (usb[1] & 0x80)) {
             int vol = usb[6];
@@ -1706,6 +1718,13 @@ static int cmdVirtual(const Options& opt) {
         auto send = [&](const int8_t* chunk, size_t n = 0, bool lite = false) {
             if (!n) n = nbytes;
             (void)lite;
+            if (ambientActive) {   // pico de este pedazo de háptica, para que la luz lata
+                int pk = 0;
+                for (size_t i = 0; i < n; ++i) pk = std::max(pk, std::abs(int(chunk[i])));
+                const float v = pk / 127.0f;
+                float cur = lightPulse.load();
+                while (v > cur && !lightPulse.compare_exchange_weak(cur, v)) {}
+            }
 #ifdef DS5_WITH_OPUS
             if (encOk && !lite) {
                 speakerFifo.pop(spk.data());
@@ -1808,6 +1827,50 @@ static int cmdVirtual(const Options& opt) {
     };
     (void)phrase;
     (void)routeSpeaker;
+    // Hilo de la luz según la pantalla (luz_pantalla): ~30 veces por segundo calcula el color,
+    // mira la pantalla ~15 veces por segundo y manda el color al mando solo si cambió
+    std::thread ambientThread([&] {
+        ds5::ScreenSampler sampler;
+        ds5::AmbientLight amb;
+        ds5::ScreenColor target;
+        DWORD lastGrab = 0, last = GetTickCount();
+        bool loggedOk = false;
+        while (!g_stop) {
+            if (!ambientWanted || opt.noOutput || btLost) {
+                if (ambientActive) { ambientActive = false; sampler.close(); amb.reset(); target = ds5::ScreenColor(); }
+                Sleep(200);
+                last = GetTickCount();
+                continue;
+            }
+            ambientActive = true;
+            Sleep(33);
+            const DWORD now = GetTickCount();
+            const float dt = float(now - last);
+            last = now;
+            if (now - lastGrab >= 66) {
+                lastGrab = now;
+                if (sampler.grab()) {
+                    target = ds5::dominantColor(sampler.pixels(), sampler.width(), sampler.height(), sampler.stride(), sampler.bgra());
+                    if (!loggedOk) {
+                        loggedOk = true;
+                        std::lock_guard<std::mutex> lg(logMu);
+                        std::printf(tr("\nLuz según la pantalla: activa (imagen de %dx%d).\n", "\nScreen light: on (%dx%d image).\n"), sampler.width(), sampler.height());
+                    }
+                }
+            }
+            amb.setRhythm(lightRhythmOn);
+            const ds5::Rgb c = amb.update(target, lightPulse.exchange(0.0f), dt);
+            if (!amb.changed(c)) continue;
+            uint8_t r[ds5::kUsbOutSize] = {};
+            r[0] = 0x02;
+            r[2] = 0x04;   // valid_flag1: barra de luz
+            r[45] = c.r;
+            r[46] = c.g;
+            r[47] = c.b;
+            forwardOutput(r, sizeof(r), true);
+        }
+    });
+
     std::thread voiceThread([&] {
 #ifdef DS5_WITH_OPUS
         if (!speakerOn) return;
@@ -2145,6 +2208,16 @@ static int cmdVirtual(const Options& opt) {
             if (imp && !wasImported) importedSince = GetTickCount();
             wasImported = imp;
         }
+        // Luz según la pantalla: solo con un juego abierto. Al terminar, vuelve el color de siempre
+        {
+            const bool want = profiles.screenLight && currentPid != 0 && !btLost;
+            lightRhythmOn = profiles.lightRhythm;
+            if (ambientWanted.exchange(want) && !want && !opt.noOutput) {
+                for (int i = 0; i < 10 && ambientActive; ++i) Sleep(50);   // que el hilo de la luz suelte
+                modeLight();
+                replayGameState();
+            }
+        }
         if (tick % 4 == 2 && restoreAudioOn) {
             bool watching = importedSince && GetTickCount() - importedSince < 60000;
             std::wstring done = audioGuard.poll(watching);
@@ -2333,6 +2406,7 @@ static int cmdVirtual(const Options& opt) {
     server.stop();
     btThread.join();
     hapticThread.join();
+    ambientThread.join();
     sayCv.notify_all();
     voiceThread.join();
     CoUninitialize();
