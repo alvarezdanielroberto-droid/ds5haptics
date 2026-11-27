@@ -50,6 +50,7 @@ struct ProfileValues {
     // Modo Xbox/PS4: háptica y parlante "simulados" a partir del sonido del juego
     bool simHaptics = true;
     bool simSpeaker = false;    // experimental: por ahora apagado por defecto
+    bool speakerVoices = false; // con el parlante simulado, también las voces (desde ~300 Hz)
     int sensitivity = 5;        // 1 (solo golpes muy fuertes) a 10 (casi todo)
 };
 
@@ -59,7 +60,7 @@ struct Profile {
     float hapticGain = -1;
     int maxSpeakerVolume = -1;
     int mode = -1;
-    int simHaptics = -1, simSpeaker = -1, sensitivity = -1;
+    int simHaptics = -1, simSpeaker = -1, sensitivity = -1, speakerVoices = -1;
 };
 
 struct ProfileSet {
@@ -118,6 +119,7 @@ struct ProfileSet {
             if (g.mode >= 0) v.mode = g.mode;
             if (g.simHaptics >= 0) v.simHaptics = g.simHaptics != 0;
             if (g.simSpeaker >= 0) v.simSpeaker = g.simSpeaker != 0;
+            if (g.speakerVoices >= 0) v.speakerVoices = g.speakerVoices != 0;
             if (g.sensitivity >= 0) v.sensitivity = g.sensitivity;
             if (matched) *matched = g.match;
             break;   // el primero que coincide
@@ -210,6 +212,8 @@ struct ProfileSet {
                 if (inGeneral) ps.general.simHaptics = parseBool(val); else if (cur) cur->simHaptics = parseBool(val) ? 1 : 0;
             } else if (key == "parlante_simulado" || key == "simulated_speaker") {
                 if (inGeneral) ps.general.simSpeaker = parseBool(val); else if (cur) cur->simSpeaker = parseBool(val) ? 1 : 0;
+            } else if (key == "parlante_voces" || key == "speaker_voices") {
+                if (inGeneral) ps.general.speakerVoices = parseBool(val); else if (cur) cur->speakerVoices = parseBool(val) ? 1 : 0;
             } else if (key == "sensibilidad" || key == "sensitivity") {
                 int n = std::clamp(std::atoi(val.c_str()), 1, 10);
                 if (inGeneral) ps.general.sensitivity = n; else if (cur) cur->sensitivity = n;
@@ -290,6 +294,8 @@ static const char* const kDefaultIniEs =
     "#        haptica (suave para pisadas, lluvia, viento; fuerte para golpes y explosiones).\r\n"
     "# parlante_simulado = si/no (EXPERIMENTAL): en modo ps4/xbox, la parte aguda del sonido\r\n"
     "#        sale bajito por el parlante del mando y sube con mecanismos y chirridos.\r\n"
+    "# parlante_voces = si/no: con parlante_simulado, salen tambien las voces y el ambiente\r\n"
+    "#        (desde ~300 Hz, a volumen de fondo mas alto). Tambien por juego.\r\n"
     "# haptica_rapida = si/no (EXPERIMENTAL, por defecto no): paquetes solo de haptica en modo\r\n"
     "#        ps4/xbox. En algunos mandos la haptica se corta a los pocos segundos.\r\n"
     "# sensibilidad = 1 a 10: cuanto tiene que sonar algo para contar como golpe fuerte\r\n"
@@ -368,6 +374,8 @@ static const char* const kDefaultIniEn =
     "#        footsteps, rain, wind; strong for hits and explosions).\r\n"
     "# simulated_speaker = yes/no (EXPERIMENTAL): in ps4/xbox mode, the high-pitched part of the\r\n"
     "#        sound plays softly on the controller speaker and gets loud for mechanisms and squeaks.\r\n"
+    "# speaker_voices = yes/no: with simulated_speaker, voices and ambience play too (from\r\n"
+    "#        ~300 Hz, at a louder background level). Also per game.\r\n"
     "# fast_haptics = yes/no (EXPERIMENTAL, default no): haptics-only packets in ps4/xbox mode.\r\n"
     "#        On some controllers haptics stop after a few seconds.\r\n"
     "# sensitivity = 1 to 10: how loud something must be to count as a hit\r\n"
@@ -518,12 +526,15 @@ static const char* const kIniUpgradeBlock6 =
     "# brillo_luz = 0 a 100: brillo de la barra de luz en % (0 = apagada; gasta menos bateria).\r\n"
     "# luz_pantalla = si/no: con un juego abierto, la barra de luz toma el color de la pantalla.\r\n"
     "# luz_ritmo = si/no: con luz_pantalla, el brillo late con los golpes del juego.\r\n"
-    "# English: battery_saver / light_brightness / screen_light / light_rhythm.\r\n"
+    "# parlante_voces = si/no: con parlante_simulado, por el parlante salen tambien las voces\r\n"
+    "#        y el ambiente (no solo los agudos). Tambien por juego.\r\n"
+    "# English: battery_saver / light_brightness / screen_light / light_rhythm / speaker_voices.\r\n"
     "[general]\r\n"
     "ahorro_bateria = si\r\n"
     "brillo_luz = 100\r\n"
     "luz_pantalla = no\r\n"
-    "luz_ritmo = si\r\n";
+    "luz_ritmo = si\r\n"
+    "parlante_voces = no\r\n";
 
 // Modo elegido agitando el mando: se anota en el perfil del juego. 'section' es el nombre
 // del perfil que ya coincide con el juego (si hay) o el del .exe; la sección repetida se

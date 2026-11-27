@@ -130,6 +130,31 @@ int main() {
             for (float x : spk) sv = std::max(sv, std::fabs(x));
             CHECK(fx.speakerHits() == before && sv < 0.15f, "voz: el parlante no sube (%u, %.3f)", fx.speakerHits() - before, sv);
         }
+        // Modo voces (parlante_voces): la misma voz sí sale por el parlante, sin saturar
+        {
+            std::vector<float> voice(rate * 2 * 3, 0.0f);   // 3 s
+            for (size_t i = 0; i < voice.size() / 2; ++i) {
+                bool on = (i / (rate / 4)) % 2 == 0;
+                float t = float(i) / rate, v = 0;
+                for (int h = 1; h <= 20; ++h) v += std::sin(6.2831853f * 150.0f * h * t) / float(h * h);
+                voice[i * 2] = voice[i * 2 + 1] = on ? 0.4f * v : 0.0f;
+            }
+            auto run = [&](bool voices) {
+                ds5::SimFx f;
+                ds5::SimFx::Config cv = c;
+                cv.speakerVoices = voices;
+                f.configure(cv);
+                std::vector<float> h, o;
+                f.process(voice.data(), voice.size() / 2, rate, h, o);
+                double e = 0;
+                float mx = 0;
+                for (size_t i = o.size() / 3; i < o.size(); ++i) { e += double(o[i]) * o[i]; mx = std::max(mx, std::fabs(o[i])); }
+                return std::make_pair(float(std::sqrt(e / double(o.size() * 2 / 3))), mx);
+            };
+            auto normal = run(false), voices = run(true);
+            CHECK(voices.first > 3.0f * normal.first && voices.first > 0.05f, "modo voces: la voz sale por el parlante (%.3f vs %.3f)", voices.first, normal.first);
+            CHECK(voices.second <= 1.0f, "modo voces: sin pasarse de 1 (%.3f)", voices.second);
+        }
         // Mecanismo / chirrido: ráfaga aguda de 4 kHz -> parlante
         {
             std::vector<float> sq(rate * 2 / 2, 0.0f);   // 0,5 s
@@ -228,6 +253,8 @@ int main() {
             auto v = ds5::ProfileSet::parse("[general]\nluz_pantalla = si\nluz_ritmo = no\n");
             auto x = ds5::ProfileSet::parse("[general]\nscreen_light = yes\n");
             CHECK(v.screenLight && !v.lightRhythm && x.screenLight && x.lightRhythm, "luz_pantalla / luz_ritmo");
+            auto pv = ds5::ProfileSet::parse("[general]\nparlante_voces = si\n[batman]\nparlante_voces = no\n");
+            CHECK(pv.resolve("x.exe").speakerVoices && !pv.resolve("BatmanAK.exe").speakerVoices, "parlante_voces (general y por juego)");
         }
         auto v = p.resolve("mafia3definitiveedition.exe");
         CHECK(!v.simHaptics && !v.simSpeaker && v.sensitivity == 8 && v.mode == ds5::kModeXbox, "perfil por juego");

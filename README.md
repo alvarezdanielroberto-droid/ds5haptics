@@ -95,7 +95,7 @@ Windows and forwards everything the game sends to the real controller over Bluet
 - **Simulated haptics** (PS4/Xbox mode): on/off with `simulated_haptics`, and `sensitivity = 1` to `10`
   for how easily hits go full strength, per game. It uses the game's own sound only on recent
   Windows 10 and 11; on older versions it uses all PC sound. `simulated_speaker = yes` also sends
-  high-pitched sounds to the controller speaker (experimental, off by default).
+  high-pitched sounds to the controller speaker (experimental, off by default). With `speaker_voices = yes`, voices and ambience play too.
 - **Spoken notices:** louder or softer with `voice_volume = 1` to `10` (default 2); off with `voice = no`.
 - **Log:** `C:\ds5haptics\ds5haptics.log` shows what's going on.
 
@@ -232,7 +232,8 @@ y el parlante, en PC, solo funcionan por cable. ds5haptics crea en Windows un **
 - **Háptica simulada** (modo PS4/Xbox): se activa o apaga con `haptica_simulada`, y
   `sensibilidad = 1` a `10` define qué tan fácil un golpe va a fondo, por juego. Usa solo el sonido
   del juego en Windows 10 reciente y 11; en versiones más viejas, todo el sonido de la PC.
-  `parlante_simulado = si` manda además los sonidos agudos al parlante (experimental, apagado por defecto).
+  `parlante_simulado = si` manda además los sonidos agudos al parlante (experimental, apagado por defecto). Con
+  `parlante_voces = si` salen también las voces y el ambiente.
 - **Avisos hablados:** más fuerte o más bajo con `volumen_voz = 1` a `10` (por defecto 2); se apagan con `voz = no`.
 - **Registro:** `C:\ds5haptics\ds5haptics.log` muestra todo lo que pasa: qué juego detectó,
   qué perfil aplicó, la batería y los errores.

@@ -1415,7 +1415,7 @@ static int cmdVirtual(const Options& opt) {
     ds5::VoiceQueue voiceQ;   // avisos hablados, se mezclan con el sonido del parlante
     // Modo Xbox/PS4: háptica y parlante simulados a partir del sonido del juego
     ds5::SimFx simFx;
-    std::atomic<bool> simActive{false}, simHapOn{true}, simSpkOn{false};
+    std::atomic<bool> simActive{false}, simHapOn{true}, simSpkOn{false}, simVoices{false};
     std::atomic<bool> fastSim{false};         // haptica_rapida (experimental)
     // Bytes de háptica por reporte 0x32. Con menos de 64 el mando no rellena: reproduce el
     // reporte completo con ceros y suena un zumbido intermitente (probado). Quedan 64.
@@ -2089,6 +2089,7 @@ static int cmdVirtual(const Options& opt) {
         simHapOn = v.simHaptics && !opt.noHaptics;
         simSpkOn = v.simSpeaker && speakerOn;
         simSens = v.sensitivity;
+        simVoices = v.speakerVoices;
         fastSim = profiles.fastHaptics;
         voiceOn = profiles.voice;
         voiceVolume = profiles.voiceVolume;
@@ -2127,6 +2128,7 @@ static int cmdVirtual(const Options& opt) {
         c.sensitivity = simSens;
         c.hapticGain = profHapticGain;
         c.speakerGain = profSpeakerGain;
+        c.speakerVoices = simVoices;
         simFx.configure(c);
         simSpk.clear();
         simFx.process(f, n, rate, simHap, simSpk);
@@ -2171,7 +2173,8 @@ static int cmdVirtual(const Options& opt) {
         if (simSpkOn) routeSpeaker();
         std::lock_guard<std::mutex> lg(logMu);
         std::printf(tr("\nHáptica simulada%s a partir de %s (sensibilidad %d).\n", "\nSimulated haptics%s from %s (sensitivity %d).\n"),
-                    simSpkOn ? tr(", y los sonidos agudos por el parlante,", ", plus high-pitched sounds on the speaker,") : "", simSource.c_str(), simSens.load());
+                    !simSpkOn ? "" : simVoices ? tr(", y el sonido con las voces por el parlante,", ", plus the sound with voices on the speaker,")
+                                               : tr(", y los sonidos agudos por el parlante,", ", plus high-pitched sounds on the speaker,"), simSource.c_str(), simSens.load());
     };
 
     bool wasImported = false;
