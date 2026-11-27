@@ -215,6 +215,16 @@ int main() {
         auto p = ds5::ProfileSet::parse("[general]\nespera_automatico = 90\nagitar = no\nboton_microfono_estadisticas = no\natajo_estadisticas = Ctrl+Alt+D\n"
                                         "[mafia]\nmodo = xbox\nhaptica_simulada = no\nsensibilidad = 8\n");
         CHECK(p.autoWaitSec == 90 && !p.shake && !p.micButtonStats && p.statsHotkey == "ctrl+alt+d", "claves de [general]");
+        // v1.2: ahorro de batería y brillo de la luz
+        CHECK(d.batterySaver && d.lightBrightness == 100 && e.batterySaver && e.lightBrightness == 100, "ahorro y brillo por defecto");
+        {
+            auto q = ds5::ProfileSet::parse("[general]\nahorro_bateria = no\nbrillo_luz = 30\n[juego]\nbrillo_luz = 0\n");
+            CHECK(!q.batterySaver && q.lightBrightness == 30, "ahorro_bateria / brillo_luz (solo en [general])");
+            auto r = ds5::ProfileSet::parse("[general]\nbattery_saver = yes\nlight_brightness = 250\n");
+            CHECK(r.batterySaver && r.lightBrightness == 100, "battery_saver / light_brightness, con límite");
+            auto u = ds5::ProfileSet::parse(std::string(ds5::kDefaultIni) + ds5::kIniUpgradeBlock6);
+            CHECK(u.batterySaver && u.lightBrightness == 100, "bloque de actualización v1.2");
+        }
         auto v = p.resolve("mafia3definitiveedition.exe");
         CHECK(!v.simHaptics && !v.simSpeaker && v.sensitivity == 8 && v.mode == ds5::kModeXbox, "perfil por juego");
         // Agitar anota el modo en el perfil: la sección repetida gana

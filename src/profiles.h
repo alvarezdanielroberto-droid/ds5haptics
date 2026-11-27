@@ -71,6 +71,8 @@ struct ProfileSet {
     int language = -1;          // -1 = el de Windows, 0 = español, 1 = inglés, 2 = argento
     bool voice = true;          // avisos hablados por el parlante del mando
     float voiceVolume = 2.0f;   // volumen de los avisos (1 = como sale de Windows, hasta 10)
+    bool batterySaver = true;   // no mandar háptica ni parlante mientras todo es silencio
+    int lightBrightness = 100;  // brillo de la barra de luz, en % (0 = apagada)
     bool restoreAudio = true;   // si Windows elige al mando como salida/entrada de audio, volver a la anterior
     int autoWaitSec = 50;       // segundos que se espera antes del cambio automático de modo
     bool shake = true;          // agitar el mando cambia de modo
@@ -192,6 +194,10 @@ struct ProfileSet {
                 if (inGeneral) ps.voice = parseBool(val);
             } else if (key == "volumen_voz" || key == "voice_volume") {
                 if (inGeneral) ps.voiceVolume = std::max(1.0f, parseGain(val));
+            } else if (key == "ahorro_bateria" || key == "ahorro_batería" || key == "ahorro_bater\xc3\xad" "a" || key == "battery_saver") {
+                if (inGeneral) ps.batterySaver = parseBool(val);
+            } else if (key == "brillo_luz" || key == "light_brightness") {
+                if (inGeneral) ps.lightBrightness = std::clamp(std::atoi(val.c_str()), 0, 100);
             } else if (key == "restaurar_audio" || key == "restore_audio") {
                 if (inGeneral) ps.restoreAudio = parseBool(val);
             } else if (key == "haptica_simulada" || key == "háptica_simulada" || key == "h\xc3\xa1ptica_simulada" || key == "simulated_haptics") {
@@ -294,6 +300,10 @@ static const char* const kDefaultIniEs =
     "# atajo_estadisticas = atajo de teclado para las estadisticas (ej. ctrl+alt+d; vacio = ninguno).\r\n"
     "# mods_dsx = si/no (experimental): recibe los mods hechos para DSX (gatillos y luces que\r\n"
     "#        manda el mod por UDP 127.0.0.1:6969). No uses DSX a la vez. Solo en [general].\r\n"
+    "# ahorro_bateria = si/no: no le manda haptica ni sonido al mando mientras todo es silencio\r\n"
+    "#        (la radio Bluetooth del mando descansa). Solo en [general].\r\n"
+    "# brillo_luz = 0 a 100: brillo de la barra de luz en % (0 = apagada; gasta menos bateria).\r\n"
+    "#        Solo en [general].\r\n"
     "# modo_automatico = xbox / ps4: a que modo pasan esos juegos (ps4 = iconos de PlayStation\r\n"
     "#        en los juegos que admiten el mando de PS4). Solo en [general].\r\n"
     "# voz = si/no: avisos hablados por el parlante del mando (modo, bateria baja).\r\n"
@@ -322,6 +332,8 @@ static const char* const kDefaultIniEs =
     "boton_microfono_estadisticas = si\r\n"
     "atajo_estadisticas =\r\n"
     "mods_dsx = si\r\n"
+    "ahorro_bateria = si\r\n"
+    "brillo_luz = 100\r\n"
     "idioma = auto\r\n"
     "\r\n"
     "# Un perfil por juego: entre corchetes, parte del nombre del .exe del juego.\r\n"
@@ -361,6 +373,10 @@ static const char* const kDefaultIniEn =
     "# stats_hotkey = keyboard shortcut for the stats (e.g. ctrl+alt+d; empty = none).\r\n"
     "# dsx_mods = yes/no (experimental): accept mods made for DSX (the triggers and lights the\r\n"
     "#        mod sends over UDP 127.0.0.1:6969). Don't run DSX at the same time. Only in [general].\r\n"
+    "# battery_saver = yes/no: send no haptics or sound to the controller while everything is\r\n"
+    "#        silent (the controller's Bluetooth radio rests). Only in [general].\r\n"
+    "# light_brightness = 0 to 100: light bar brightness in % (0 = off; uses less battery).\r\n"
+    "#        Only in [general].\r\n"
     "# auto_mode = xbox / ps4: which mode those games switch to (ps4 = PlayStation icons in\r\n"
     "#        games that support the PS4 controller). Only in [general].\r\n"
     "# voice = yes/no: spoken notices through the controller speaker (mode, low battery).\r\n"
@@ -389,6 +405,8 @@ static const char* const kDefaultIniEn =
     "mic_button_stats = yes\r\n"
     "stats_hotkey =\r\n"
     "dsx_mods = yes\r\n"
+    "battery_saver = yes\r\n"
+    "light_brightness = 100\r\n"
     "language = auto\r\n"
     "\r\n"
     "# One profile per game: in brackets, part of the game's .exe name.\r\n"
@@ -475,6 +493,17 @@ static const char* const kIniUpgradeBlock5 =
     "boton_microfono_estadisticas = si\r\n"
     "atajo_estadisticas =\r\n"
     "mods_dsx = si\r\n";
+
+// Sexta actualización (v1.2): ahorro de batería y brillo de la luz
+static const char* const kIniUpgradeBlock6 =
+    "\r\n"
+    "# --- Opciones nuevas / New options (v1.2) ---\r\n"
+    "# ahorro_bateria = si/no: no le manda haptica ni sonido al mando mientras todo es silencio.\r\n"
+    "# brillo_luz = 0 a 100: brillo de la barra de luz en % (0 = apagada; gasta menos bateria).\r\n"
+    "# English: battery_saver / light_brightness.\r\n"
+    "[general]\r\n"
+    "ahorro_bateria = si\r\n"
+    "brillo_luz = 100\r\n";
 
 // Modo elegido agitando el mando: se anota en el perfil del juego. 'section' es el nombre
 // del perfil que ya coincide con el juego (si hay) o el del .exe; la sección repetida se

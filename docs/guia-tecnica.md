@@ -107,6 +107,22 @@ pulsando**. Vuelve a la normalidad al enchufarlo. El umbral se cambia con `bater
 en `[general]` (`0` lo desactiva). El mando informa la batería en pasos de 10%.
 `ds5haptics battery` muestra el nivel actual, y cada cambio queda anotado en `ds5haptics.log`.
 
+### Ahorro de batería
+
+Lo que más gasta la batería del mando es la háptica, los gatillos, el parlante, la barra de luz y
+la radio Bluetooth. Con un juego abierto, Windows manda audio todo el tiempo (aunque sea
+silencio), y ds5haptics mandaba un reporte 0x36 (398 bytes) cada 10,7 ms: la radio del mando no
+paraba nunca.
+
+- `ahorro_bateria = si` (por defecto): si la háptica y el parlante están en silencio desde hace
+  ~0,3 s, no se manda nada. Con el primer sonido se vuelve a mandar enseguida. El cuadro de
+  estadísticas muestra el % de envíos evitados.
+- `brillo_luz = 0 a 100`: escala todos los colores de la barra de luz (los del juego, los de DSX
+  y los del modo). 0 la apaga.
+
+Cuánto dura más la batería depende del juego: en uno con mucha háptica todo el tiempo, el ahorro
+es poco; en uno con silencios, menús o diálogos, más.
+
 ### Mods hechos para DSX (experimental)
 
 Algunos mods de la comunidad (por ejemplo, uno para RDR2) mandan a DSX por UDP, a

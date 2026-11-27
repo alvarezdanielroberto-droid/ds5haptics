@@ -70,6 +70,10 @@ Windows and forwards everything the game sends to the real controller over Bluet
   keyboard shortcut with `stats_hotkey`, e.g. `ctrl+alt+d`). Right click on the icon: *Show stats*,
   *Start with Windows* and *Exit*. The PS button stays free for the game. Turn the mic button off
   with `mic_button_stats = no`.
+- **Battery:** while there is no haptics or sound, ds5haptics stops sending to the controller so
+  its Bluetooth radio can rest (`battery_saver`, on by default; the stats show how much it saved).
+  `light_brightness = 30` dims the light bar (0 turns it off). Lowering the profile's `haptics`
+  and `speaker` levels also helps.
 - **Closed it with *Exit*?** Open it again from the **Start menu > ds5haptics** (or double click
   `C:\ds5haptics\ds5haptics.exe`). No need to restart the PC.
 - **Profiles:** `C:\ds5haptics\perfiles.bat` opens `ds5haptics.ini`:
@@ -200,6 +204,10 @@ y el parlante, en PC, solo funcionan por cable. ds5haptics crea en Windows un **
   podés poner un atajo de teclado con `atajo_estadisticas`, ej. `ctrl+alt+d`). Clic derecho en el
   ícono: *Ver estadísticas*, *Iniciar con Windows* y *Salir*. El botón PS queda libre para el juego.
   El botón de micrófono se desactiva con `boton_microfono_estadisticas = no`.
+- **Batería:** mientras no hay háptica ni sonido, ds5haptics deja de mandarle datos al mando para
+  que su radio Bluetooth descanse (`ahorro_bateria`, activado por defecto; las estadísticas muestran
+  cuánto ahorró). `brillo_luz = 30` baja el brillo de la barra de luz (0 la apaga). Bajar `haptica`
+  y `parlante` en el perfil del juego también ayuda.
 - **¿Lo cerraste con *Salir*?** Se vuelve a abrir desde el **menú Inicio > ds5haptics** (o con doble
   clic en `C:\ds5haptics\ds5haptics.exe`). No hace falta reiniciar la PC.
 - **Perfiles:** `C:\ds5haptics\perfiles.bat` abre `ds5haptics.ini`. Ejemplo:

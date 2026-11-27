@@ -452,8 +452,13 @@ static bool openDevice(const Options& opt, HidDevice& dev) {
     return true;
 }
 
+// Brillo de la barra de luz (brillo_luz, en %): se aplica a todos los colores que van al mando
+static std::atomic<int> g_lightPct{100};
+static uint8_t dimLight(uint8_t v) { return uint8_t((unsigned(v) * unsigned(g_lightPct.load()) + 50) / 100); }
+
 static void setLightbar(HidDevice& dev, const Options& opt, uint8_t r, uint8_t g, uint8_t b) {
     if (opt.noLightbar) return;
+    r = dimLight(r); g = dimLight(g); b = dimLight(b);
     uint8_t rep[ds5::kMainReportSize];
     ds5::buildLightbarReport(rep, 0, r, g, b, 0x04 /* LED central */);
     if (!dev.write(rep, sizeof(rep), opt.setOutputReport, 100))
@@ -946,13 +951,15 @@ static void ensureIni() {
         const bool need3 = low.find("idioma") == std::string::npos && low.find("language") == std::string::npos;
         const bool need4 = low.find("restaurar_audio") == std::string::npos && low.find("restore_audio") == std::string::npos;
         const bool need5 = low.find("espera_automatico") == std::string::npos && low.find("auto_wait") == std::string::npos;
-        if (!need1 && !need2 && !need3 && !need4 && !need5) return;
+        const bool need6 = low.find("ahorro_bateria") == std::string::npos && low.find("battery_saver") == std::string::npos;
+        if (!need1 && !need2 && !need3 && !need4 && !need5 && !need6) return;
         if (FILE* a = _wfopen(p.c_str(), L"ab")) {
             if (need1) std::fputs(ds5::kIniUpgradeBlock, a);
             if (need2) std::fputs(ds5::kIniUpgradeBlock2, a);
             if (need3) std::fputs(ds5::kIniUpgradeBlock3, a);
             if (need4) std::fputs(ds5::kIniUpgradeBlock4, a);
             if (need5) std::fputs(ds5::kIniUpgradeBlock5, a);
+            if (need6) std::fputs(ds5::kIniUpgradeBlock6, a);
             std::fclose(a);
         }
         return;
@@ -1167,7 +1174,7 @@ static int cmdVirtual(const Options& opt) {
                        "Created the \"ds5haptics\" shortcut in the Start menu (to open it again).\n"));
 
     // Opciones de [general] que se usan antes de cargar los perfiles (se actualizan al recargar)
-    std::atomic<bool> voiceOn{true}, restoreAudioOn{true};
+    std::atomic<bool> voiceOn{true}, restoreAudioOn{true}, saverOn{true};
     std::atomic<float> voiceVolume{2.0f};
     std::atomic<bool> shakeOn{true}, micStatsOn{true}, dsxOn{true};
     std::string statsHotkey;
@@ -1180,6 +1187,8 @@ static int cmdVirtual(const Options& opt) {
             voiceOn = p0.voice;
             voiceVolume = p0.voiceVolume;
             restoreAudioOn = p0.restoreAudio;
+            saverOn = p0.batterySaver;
+            g_lightPct = p0.lightBrightness;
             shakeOn = p0.shake;
             micStatsOn = p0.micButtonStats;
             statsHotkey = p0.statsHotkey;
@@ -1285,6 +1294,12 @@ static int cmdVirtual(const Options& opt) {
         if (opt.stripAudioFlags) {
             // valid_flag0: quitar selección de háptica y ajustes de volumen/ruta de audio
             bt[3] &= uint8_t(~(0x02 | 0x10 | 0x20 | 0x40 | 0x80));
+            uint32_t crc = ds5::crc32_bt(bt, ds5::kMainReportSize - 4);
+            bt[74] = uint8_t(crc); bt[75] = uint8_t(crc >> 8); bt[76] = uint8_t(crc >> 16); bt[77] = uint8_t(crc >> 24);
+        }
+        // Brillo de la luz (brillo_luz): valid_flag1 bit 0x04 = el reporte trae color (bytes 45..47 por USB)
+        if (g_lightPct.load() < 100 && (bt[4] & 0x04)) {
+            bt[47] = dimLight(bt[47]); bt[48] = dimLight(bt[48]); bt[49] = dimLight(bt[49]);
             uint32_t crc = ds5::crc32_bt(bt, ds5::kMainReportSize - 4);
             bt[74] = uint8_t(crc); bt[75] = uint8_t(crc >> 8); bt[76] = uint8_t(crc >> 16); bt[77] = uint8_t(crc >> 24);
         }
@@ -1639,6 +1654,7 @@ static int cmdVirtual(const Options& opt) {
 
     // Hilo de envío de háptica: un reporte 0x32 cada 10,667 ms mientras el juego mande audio
     std::atomic<unsigned> hapticReports{0};
+    std::atomic<unsigned> savedReports{0};   // envíos evitados por silencio (ahorro_bateria)
     std::atomic<bool> hapticActive{false};
     std::atomic<unsigned> hapticGaps{0};
     std::atomic<unsigned> speakerErrors{0};
@@ -1671,6 +1687,22 @@ static int cmdVirtual(const Options& opt) {
         auto liteNow = [&] {
             return fastSim && padMode != ds5::kModePs5 && simActive && !simSpkOn && !voiceQ.active();
         };
+        // Ahorro de batería: si la háptica y el parlante están en silencio desde hace ~0,3 s, no
+        // se manda nada (la radio Bluetooth del mando descansa). Con el primer sonido se vuelve
+        // a mandar enseguida. Los ~0,3 s dejan terminar las colas de los efectos.
+        int quietRun = 0;
+        constexpr int kQuietReports = 28;   // ~0,3 s de reportes de 10,7 ms
+        auto hapticSilent = [](const int8_t* c, size_t n) {
+            for (size_t i = 0; i < n; ++i)
+                if (c[i] > 1 || c[i] < -1) return false;
+            return true;
+        };
+        auto skipQuiet = [&](bool silent) {
+            if (!silent || !saverOn) { quietRun = 0; return false; }
+            if (++quietRun <= kQuietReports) return false;
+            ++savedReports;
+            return true;
+        };
         auto send = [&](const int8_t* chunk, size_t n = 0, bool lite = false) {
             if (!n) n = nbytes;
             (void)lite;
@@ -1678,6 +1710,13 @@ static int cmdVirtual(const Options& opt) {
             if (encOk && !lite) {
                 speakerFifo.pop(spk.data());
                 voiceQ.mixInto(spk.data(), ds5::kSpeakerInFrames);
+                if (saverOn) {
+                    bool silent = hapticSilent(chunk, n);
+                    for (size_t i = 0; silent && i < spk.size(); ++i) silent = std::fabs(spk[i]) < 1e-4f;
+                    if (skipQuiet(silent)) return;
+                } else {
+                    quietRun = 0;
+                }
                 if (!speakerEnc.encode(spk.data(), opusPkt)) ++speakerErrors;
                 arep.build(chunk, opusPkt);
                 std::shared_lock<std::shared_mutex> lk(devMu);
@@ -1688,6 +1727,7 @@ static int cmdVirtual(const Options& opt) {
                 return;
             }
 #endif
+            if (skipQuiet(hapticSilent(chunk, n))) return;
             rep.setSamples(chunk, n);
             std::shared_lock<std::shared_mutex> lk(devMu);
             DWORD us = 0;
@@ -1990,6 +2030,11 @@ static int cmdVirtual(const Options& opt) {
         voiceOn = profiles.voice;
         voiceVolume = profiles.voiceVolume;
         restoreAudioOn = profiles.restoreAudio;
+        saverOn = profiles.batterySaver;
+        if (g_lightPct.exchange(profiles.lightBrightness) != profiles.lightBrightness && !opt.noOutput) {
+            modeLight();          // volver a mandar el color con el brillo nuevo
+            replayGameState();    // (y el del juego, si puso uno)
+        }
         const int wantMode = opt.mode >= 0 ? opt.mode : v.mode;
         std::printf(tr("\nPerfil %s%s%s: modo %s, parlante x%.1f, háptica x%.1f%s\n", "\nProfile %s%s%s: mode %s, speaker x%.1f, haptics x%.1f%s\n"),
                     matched.empty() ? "general" : ("[" + matched + "]").c_str(),
@@ -2231,6 +2276,11 @@ static int cmdVirtual(const Options& opt) {
                 st.ownLatencyMs = haptics->bufferedMs() + fill + (st.writeMs >= 0 ? st.writeMs : 0);
             }
             st.gaps = hapticGaps;
+            {   // ahorro de batería: % de envíos evitados por silencio (desde que arrancó)
+                const unsigned sv = savedReports, sent = hapticReports;
+                st.savedPct = (sv + sent) ? int(100.0 * sv / double(sv + sent) + 0.5) : 0;
+                st.saverOn = saverOn;
+            }
             st.speakerEnabled = speakerOn;
             st.speakerStreaming = vds.speakerStreaming() || (pmS != ds5::kModePs5 && simRunning && simSpkOn);
             st.gameVolume = lastGameVolume;
